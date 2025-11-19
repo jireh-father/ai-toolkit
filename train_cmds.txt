@@ -1,0 +1,10 @@
+# install
+python 3.12
+pytorch 2.7.0
+
+hf login (웹에서 토큰 체크박스 몇가지 하기)
+hf download black-forest-labs/FLUX.1-Kontext-dev --local-dir ./black-forest-labs/FLUX.1-Kontext-dev
+
+
+# train
+CUDA_VISIBLE_DEVICES=1 nohup python -u run.py config/examples/train_lora_flux_kontext_24gb.yaml > log_tr_hushcut &
