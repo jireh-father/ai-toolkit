@@ -61,6 +61,7 @@ def main():
     parser.add_argument("--model_path", type=str, default="black-forest-labs/FLUX.1-Kontext-dev", help="로컬 모델 경로")
     parser.add_argument("--input_image", type=str, default="test.jpg", help="입력 이미지 경로")
     parser.add_argument("--output_image", type=str, default="output.png", help="출력 이미지 경로")
+    parser.add_argument("--resized_input_image", type=str, default="resized_input.png", help="변환된 입력 이미지 저장 경로")
     parser.add_argument("--prompt", type=str, default="change only hair to bob hair", help="프롬프트")
     parser.add_argument("--guidance_scale", type=float, default=2.5, help="가이던스 스케일")
     parser.add_argument("--width", type=int, default=None, help="출력 이미지 너비")
@@ -82,7 +83,9 @@ def main():
     # Kontext에 맞는 해상도로 변환
     input_image = convert_to_flux_kontext_image_scale(input_image)
     
-    
+    # 변환된 입력 이미지 저장
+    input_image.save(args.resized_input_image)
+    print(f"변환된 입력 이미지가 {args.resized_input_image}에 저장되었습니다.")
     print(f"입력 이미지 크기: {input_image.width}x{input_image.height}")
     
     # 이미지 생성
