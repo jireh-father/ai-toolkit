@@ -81,6 +81,12 @@ def main():
     
     print(f"프롬프트 파일에서 {len(prompts)}개의 프롬프트를 로드했습니다.")
     
+    # num_repeat이 프롬프트 개수보다 많으면 조정
+    if args.num_repeat > len(prompts):
+        print(f"경고: num_repeat({args.num_repeat})이 프롬프트 개수({len(prompts)})보다 많습니다.")
+        args.num_repeat = len(prompts)
+        print(f"num_repeat을 {args.num_repeat}로 조정합니다.")
+    
     # 출력 디렉토리 생성
     os.makedirs(args.resized_input_dir, exist_ok=True)
     os.makedirs(args.output_dir, exist_ok=True)
@@ -122,14 +128,19 @@ def main():
             
             print(f"  - 입력 이미지 크기: {input_image.width}x{input_image.height}")
             
+            # 현재 이미지에 사용할 프롬프트 리스트 (중복 없이 랜덤 선택)
+            available_prompts = prompts.copy()
+            random.shuffle(available_prompts)
+            selected_prompts = available_prompts[:args.num_repeat]
+            
             # num_repeat 만큼 반복
             for repeat_idx in range(args.num_repeat):
                 current_iteration += 1
                 print(f"  [{repeat_idx + 1}/{args.num_repeat}] (전체 진행: {current_iteration}/{total_iterations})")
                 
                 try:
-                    # 랜덤하게 프롬프트 선택
-                    selected_prompt = random.choice(prompts)
+                    # 미리 선택된 프롬프트 사용 (중복 없음)
+                    selected_prompt = selected_prompts[repeat_idx]
                     print(f"    - 선택된 프롬프트: {selected_prompt}")
                     
                     # 파일명 생성 (확장자는 .jpg로 통일, 인덱스 추가)
