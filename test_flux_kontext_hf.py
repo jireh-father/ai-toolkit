@@ -33,14 +33,10 @@ def main():
     pipe_kwargs = {
         "image": input_image,
         "prompt": args.prompt,
-        "guidance_scale": args.guidance_scale
+        "guidance_scale": args.guidance_scale,
+        "width": width,
+        "height": height
     }
-    
-    # width와 height가 지정된 경우에만 추가
-    if args.width is not None:
-        pipe_kwargs["width"] = width
-    if args.height is not None:
-        pipe_kwargs["height"] = height
     
     image = pipe(**pipe_kwargs).images[0]
     
