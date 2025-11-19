@@ -24,52 +24,36 @@ PREFERED_KONTEXT_RESOLUTIONS = [
     (1568, 672),
 ]
 
-def lanczos(samples, width, height):
-    images = [Image.fromarray(np.clip(255. * image.movedim(0, -1).cpu().numpy(), 0, 255).astype(np.uint8)) for image in samples]
-    images = [image.resize((width, height), resample=Image.Resampling.LANCZOS) for image in images]
-    images = [torch.from_numpy(np.array(image).astype(np.float32) / 255.0).movedim(-1, 0) for image in images]
-    result = torch.stack(images)
-    return result.to(samples.device, samples.dtype)
-
-def upscale(samples, width, height, upscale_method, crop):
-    orig_shape = tuple(samples.shape)
-    if len(orig_shape) > 4:
-        samples = samples.reshape(samples.shape[0], samples.shape[1], -1, samples.shape[-2], samples.shape[-1])
-        samples = samples.movedim(2, 1)
-        samples = samples.reshape(-1, orig_shape[1], orig_shape[-2], orig_shape[-1])
-    if crop == "center":
-        old_width = samples.shape[-1]
-        old_height = samples.shape[-2]
-        old_aspect = old_width / old_height
-        new_aspect = width / height
-        x = 0
-        y = 0
-        if old_aspect > new_aspect:
-            x = round((old_width - old_width * (new_aspect / old_aspect)) / 2)
-        elif old_aspect < new_aspect:
-            y = round((old_height - old_height * (old_aspect / new_aspect)) / 2)
-        s = samples.narrow(-2, y, old_height - y * 2).narrow(-1, x, old_width - x * 2)
-    else:
-        s = samples
-
-    if upscale_method == "lanczos":
-        out = lanczos(s, width, height)
-    else:
-        out = torch.nn.functional.interpolate(s, size=(height, width), mode=upscale_method)
-
-    if len(orig_shape) == 4:
-        return out
-
-    out = out.reshape((orig_shape[0], -1, orig_shape[1]) + (height, width))
-    return out.movedim(2, 1).reshape(orig_shape[:-2] + (height, width))
-
 def convert_to_flux_kontext_image_scale(image):
-    image = torch.from_numpy(np.array(image).astype(np.float32) / 255.0).movedim(-1, 0)
-    width = image.shape[2]
-    height = image.shape[1]
+    """PIL 이미지를 Kontext에 맞는 해상도로 리사이즈"""
+    width = image.width
+    height = image.height
     aspect_ratio = width / height
-    _, width, height = min((abs(aspect_ratio - w / h), w, h) for w, h in PREFERED_KONTEXT_RESOLUTIONS)
-    image = upscale(image.movedim(-1, 1), width, height, "lanczos", "center").movedim(1, -1)
+    
+    # 가장 가까운 해상도 찾기
+    _, target_width, target_height = min(
+        (abs(aspect_ratio - w / h), w, h) 
+        for w, h in PREFERED_KONTEXT_RESOLUTIONS
+    )
+    
+    # center crop 계산
+    old_aspect = width / height
+    new_aspect = target_width / target_height
+    
+    if old_aspect > new_aspect:
+        # 너비가 더 넓음 - 좌우 크롭
+        new_width = int(height * new_aspect)
+        left = (width - new_width) // 2
+        image = image.crop((left, 0, left + new_width, height))
+    elif old_aspect < new_aspect:
+        # 높이가 더 높음 - 상하 크롭
+        new_height = int(width / new_aspect)
+        top = (height - new_height) // 2
+        image = image.crop((0, top, width, top + new_height))
+    
+    # 리사이즈
+    image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+    
     return image
 
 def main():
@@ -95,14 +79,18 @@ def main():
     # 로컬 이미지 로드
     input_image = Image.open(args.input_image)
     
+    # Kontext에 맞는 해상도로 변환
     input_image = convert_to_flux_kontext_image_scale(input_image)
-
-    width = args.width or input_image.shape[2]
-    height = args.height or input_image.shape[1]
+    
+    width = args.width or input_image.width
+    height = args.height or input_image.height
+    
+    print(f"입력 이미지 크기: {input_image.width}x{input_image.height}")
+    print(f"출력 이미지 크기: {width}x{height}")
     
     # 이미지 생성
     pipe_kwargs = {
-        "image": input_image.movedim(1, -1),
+        "image": input_image,
         "prompt": args.prompt,
         "guidance_scale": args.guidance_scale,
         "width": width,
