@@ -10,6 +10,8 @@ def main():
     parser.add_argument("--output_image", type=str, default="output.png", help="출력 이미지 경로")
     parser.add_argument("--prompt", type=str, default="change only hair to bob hair", help="프롬프트")
     parser.add_argument("--guidance_scale", type=float, default=2.5, help="가이던스 스케일")
+    parser.add_argument("--width", type=int, default=None, help="출력 이미지 너비")
+    parser.add_argument("--height", type=int, default=None, help="출력 이미지 높이")
     
     args = parser.parse_args()
     
@@ -23,13 +25,24 @@ def main():
     
     # 로컬 이미지 로드
     input_image = Image.open(args.input_image)
+
+    width = args.width or input_image.width
+    height = args.height or input_image.height
     
     # 이미지 생성
-    image = pipe(
-        image=input_image,
-        prompt=args.prompt,
-        guidance_scale=args.guidance_scale
-    ).images[0]
+    pipe_kwargs = {
+        "image": input_image,
+        "prompt": args.prompt,
+        "guidance_scale": args.guidance_scale
+    }
+    
+    # width와 height가 지정된 경우에만 추가
+    if args.width is not None:
+        pipe_kwargs["width"] = width
+    if args.height is not None:
+        pipe_kwargs["height"] = height
+    
+    image = pipe(**pipe_kwargs).images[0]
     
     # 이미지 저장
     image.save(args.output_image)
