@@ -82,19 +82,16 @@ def main():
     # Kontext에 맞는 해상도로 변환
     input_image = convert_to_flux_kontext_image_scale(input_image)
     
-    width = args.width or input_image.width
-    height = args.height or input_image.height
     
     print(f"입력 이미지 크기: {input_image.width}x{input_image.height}")
-    print(f"출력 이미지 크기: {width}x{height}")
     
     # 이미지 생성
     pipe_kwargs = {
         "image": input_image,
         "prompt": args.prompt,
         "guidance_scale": args.guidance_scale,
-        "width": width,
-        "height": height
+        "width": input_image.width,
+        "height": input_image.height
     }
     
     image = pipe(**pipe_kwargs).images[0]
