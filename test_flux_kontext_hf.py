@@ -5,10 +5,10 @@ from PIL import Image
 
 def main():
     parser = argparse.ArgumentParser(description="FLUX Kontext 이미지 생성")
-    parser.add_argument("--model_path", type=str, required=True, help="로컬 모델 경로")
-    parser.add_argument("--input_image", type=str, required=True, help="입력 이미지 경로")
+    parser.add_argument("--model_path", type=str, default="black-forest-labs/FLUX.1-Kontext-dev", help="로컬 모델 경로")
+    parser.add_argument("--input_image", type=str, default="test.jpg", help="입력 이미지 경로")
     parser.add_argument("--output_image", type=str, default="output.png", help="출력 이미지 경로")
-    parser.add_argument("--prompt", type=str, default="Add a hat to the cat", help="프롬프트")
+    parser.add_argument("--prompt", type=str, default="change only hair to bob hair", help="프롬프트")
     parser.add_argument("--guidance_scale", type=float, default=2.5, help="가이던스 스케일")
     
     args = parser.parse_args()
