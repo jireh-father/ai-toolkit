@@ -222,7 +222,7 @@ def draw_pose_keypoints_vitpose(image, pose_result):
 
 
 def validate_image_pair(input_path, output_path, face_app, pose_model, image_processor, pose_estimator, 
-                        face_similarity_threshold, face_keypoint_threshold, pose_threshold):
+                        face_similarity_threshold, face_keypoint_threshold, pose_threshold, debug=False, debug_dir=None, stem=None):
     """이미지 쌍 검증"""
     # 이미지 로드
     input_image = Image.open(input_path)
@@ -260,6 +260,15 @@ def validate_image_pair(input_path, output_path, face_app, pose_model, image_pro
         (input_image.width, input_image.height),
         face_keypoint_threshold
     )
+    
+    # Debug 모드: 얼굴 키포인트 시각화 저장
+    if debug and debug_dir and stem:
+        input_face_vis = draw_face_keypoints(input_image, kps1)
+        output_face_vis = draw_face_keypoints(output_image, kps2)
+        
+        Image.fromarray(input_face_vis).save(os.path.join(debug_dir, f"{stem}_input_face_keypoints.jpg"), quality=95)
+        Image.fromarray(output_face_vis).save(os.path.join(debug_dir, f"{stem}_output_face_keypoints.jpg"), quality=95)
+    
     if not keypoint_ok:
         # 시각화 이미지 생성
         input_vis = draw_face_keypoints(input_image, kps1)
@@ -276,6 +285,15 @@ def validate_image_pair(input_path, output_path, face_app, pose_model, image_pro
         pose_ok, pose_displacement, pose_data1, pose_data2 = check_mediapipe_pose_displacement(
             input_image, output_image, pose_threshold
         )
+        
+        # Debug 모드: Pose 키포인트 시각화 저장
+        if debug and debug_dir and stem:
+            input_pose_vis = draw_pose_keypoints_mediapipe(input_image, pose_data1)
+            output_pose_vis = draw_pose_keypoints_mediapipe(output_image, pose_data2)
+            
+            Image.fromarray(input_pose_vis).save(os.path.join(debug_dir, f"{stem}_input_pose_keypoints.jpg"), quality=95)
+            Image.fromarray(output_pose_vis).save(os.path.join(debug_dir, f"{stem}_output_pose_keypoints.jpg"), quality=95)
+        
         if not pose_ok:
             # 시각화 이미지 생성
             input_vis = draw_pose_keypoints_mediapipe(input_image, pose_data1)
@@ -290,6 +308,15 @@ def validate_image_pair(input_path, output_path, face_app, pose_model, image_pro
         pose_ok, pose_displacement, pose_data1, pose_data2 = check_vitpose_displacement(
             input_image, output_image, pose_model, image_processor, pose_threshold
         )
+        
+        # Debug 모드: Pose 키포인트 시각화 저장
+        if debug and debug_dir and stem:
+            input_pose_vis = draw_pose_keypoints_vitpose(input_image, pose_data1)
+            output_pose_vis = draw_pose_keypoints_vitpose(output_image, pose_data2)
+            
+            Image.fromarray(input_pose_vis).save(os.path.join(debug_dir, f"{stem}_input_pose_keypoints.jpg"), quality=95)
+            Image.fromarray(output_pose_vis).save(os.path.join(debug_dir, f"{stem}_output_pose_keypoints.jpg"), quality=95)
+        
         if not pose_ok:
             # 시각화 이미지 생성
             input_vis = draw_pose_keypoints_vitpose(input_image, pose_data1)
@@ -322,11 +349,19 @@ def main():
                        help="ViTPose HuggingFace 모델 이름 (pose_estimator=vitpose일 때 사용)")
     parser.add_argument("--remove_false_files", action="store_true",
                        help="실패 케이스 파일을 원본 디렉토리에서도 삭제")
+    parser.add_argument("--debug", action="store_true",
+                       help="디버그 모드: 모든 이미지의 키포인트 시각화를 debug_dir에 저장")
+    parser.add_argument("--debug_dir", type=str, default="debug_visualizations",
+                       help="디버그 시각화 저장 디렉토리")
     
     args = parser.parse_args()
     
     # 실패 케이스 디렉토리 생성
     os.makedirs(args.false_dir, exist_ok=True)
+    
+    # 디버그 디렉토리 생성
+    if args.debug:
+        os.makedirs(args.debug_dir, exist_ok=True)
     
     # InsightFace 초기화 (buffalo_l - 가장 정확한 모델)
     print("InsightFace 모델 로딩 중...")
@@ -381,7 +416,10 @@ def main():
                 input_file, output_file, face_app, pose_model, image_processor, args.pose_estimator,
                 args.face_similarity_threshold,
                 args.face_keypoint_threshold,
-                args.pose_threshold
+                args.pose_threshold,
+                args.debug,
+                args.debug_dir if args.debug else None,
+                stem
             )
             
             if is_valid:
