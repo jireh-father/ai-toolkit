@@ -156,7 +156,7 @@ def main():
     
     # InsightFace 초기화
     print("InsightFace 모델 로딩 중...")
-    face_app = FaceAnalysis(providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+    face_app = FaceAnalysis(providers=['CUDAExecutionProvider', 'CPUExecutionProvider'], root='./models')
     face_app.prepare(ctx_id=0, det_size=(640, 640))
     print("InsightFace 모델 로딩 완료!")
     
