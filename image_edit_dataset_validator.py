@@ -328,9 +328,9 @@ def main():
     # 실패 케이스 디렉토리 생성
     os.makedirs(args.false_dir, exist_ok=True)
     
-    # InsightFace 초기화
+    # InsightFace 초기화 (buffalo_l - 가장 정확한 모델)
     print("InsightFace 모델 로딩 중...")
-    face_app = FaceAnalysis(providers=['CUDAExecutionProvider', 'CPUExecutionProvider'], root='./models')
+    face_app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'], root='./models')
     face_app.prepare(ctx_id=0, det_size=(640, 640))
     print("InsightFace 모델 로딩 완료!")
     
