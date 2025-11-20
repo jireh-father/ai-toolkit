@@ -85,13 +85,28 @@ def check_mediapipe_pose_displacement(image1, image2, displacement_threshold=0.1
     return True, max_displacement_ratio, results1.pose_landmarks, results2.pose_landmarks
 
 
+def detect_person_bbox(image):
+    """간단한 person detection - 전체 이미지를 bbox로 사용"""
+    width, height = image.size
+    # 전체 이미지를 bounding box로 사용 (x1, y1, x2, y2)
+    return [[0, 0, width, height]]
+
+
 def check_vitpose_displacement(image1, image2, pose_model, image_processor, displacement_threshold=0.1):
     """ViTPose로 신체 키포인트 변위 검사 (HuggingFace)"""
     device = next(pose_model.parameters()).device
     
-    # 이미지 전처리
-    inputs1 = image_processor(images=image1, return_tensors="pt").to(device)
-    inputs2 = image_processor(images=image2, return_tensors="pt").to(device)
+    # Bounding box 생성 (전체 이미지)
+    boxes1 = detect_person_bbox(image1)
+    boxes2 = detect_person_bbox(image2)
+    
+    # 이미지 전처리 (boxes 포함)
+    inputs1 = image_processor(images=image1, boxes=boxes1, return_tensors="pt")
+    inputs2 = image_processor(images=image2, boxes=boxes2, return_tensors="pt")
+    
+    # GPU로 이동
+    inputs1 = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs1.items()}
+    inputs2 = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs2.items()}
     
     # Pose 검출
     with torch.no_grad():
