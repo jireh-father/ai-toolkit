@@ -113,8 +113,8 @@ def validate_image_pair(input_path, output_path, face_app, face_similarity_thres
     
     # 1. 얼굴 유사도 검사 (threshold 이하여야 성공)
     similarity = calculate_face_similarity(face_input, face_output)
-    if similarity > face_similarity_threshold:
-        return False, f"얼굴 유사도가 너무 높음: {similarity:.4f} > {face_similarity_threshold}"
+    if similarity < face_similarity_threshold:
+        return False, f"얼굴 유사도가 너무 낮음: {similarity:.4f} < {face_similarity_threshold}"
     
     # 2. 얼굴 키포인트 변위 검사
     keypoint_ok, displacement = check_face_keypoints_displacement(
@@ -140,7 +140,7 @@ def main():
     parser.add_argument("--input_dir", type=str, required=True, help="입력 이미지 디렉토리")
     parser.add_argument("--output_dir", type=str, required=True, help="출력 이미지 디렉토리")
     parser.add_argument("--false_dir", type=str, default="false_cases", help="실패 케이스 저장 디렉토리")
-    parser.add_argument("--face_similarity_threshold", type=float, default=0.5, 
+    parser.add_argument("--face_similarity_threshold", type=float, default=0.4, 
                        help="얼굴 유사도 임계값 (이하여야 성공)")
     parser.add_argument("--face_keypoint_threshold", type=float, default=0.1,
                        help="얼굴 키포인트 변위 임계값 (이미지 대각선 대비 비율)")
