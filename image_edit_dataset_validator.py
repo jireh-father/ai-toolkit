@@ -33,9 +33,9 @@ def check_face_keypoints_displacement(face1, face2, image_size, displacement_thr
         displacement_ratio = displacement / diagonal
         
         if displacement_ratio > displacement_threshold:
-            return False, displacement_ratio
+            return False, displacement_ratio, kps1, kps2
     
-    return True, 0.0
+    return True, 0.0, kps1, kps2
 
 
 def check_mediapipe_pose_displacement(image1, image2, displacement_threshold=0.1):
@@ -55,7 +55,7 @@ def check_mediapipe_pose_displacement(image1, image2, displacement_threshold=0.1
     
     # 두 이미지 모두에서 pose가 검출되지 않으면 통과
     if not results1.pose_landmarks or not results2.pose_landmarks:
-        return True, 0.0
+        return True, 0.0, None, None
     
     # 이미지 대각선 길이
     height, width = image1_rgb.shape[:2]
@@ -78,9 +78,44 @@ def check_mediapipe_pose_displacement(image1, image2, displacement_threshold=0.1
         max_displacement_ratio = max(max_displacement_ratio, displacement_ratio)
         
         if displacement_ratio > displacement_threshold:
-            return False, displacement_ratio
+            return False, displacement_ratio, results1.pose_landmarks, results2.pose_landmarks
     
-    return True, max_displacement_ratio
+    return True, max_displacement_ratio, results1.pose_landmarks, results2.pose_landmarks
+
+
+def draw_face_keypoints(image, keypoints):
+    """얼굴 키포인트를 이미지에 시각화"""
+    img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    
+    # 키포인트 그리기
+    for i, kp in enumerate(keypoints):
+        cv2.circle(img, (int(kp[0]), int(kp[1])), 5, (0, 255, 0), -1)
+        cv2.putText(img, str(i), (int(kp[0])+10, int(kp[1])), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+    
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+
+def draw_pose_keypoints(image, pose_landmarks):
+    """Pose 키포인트를 이미지에 시각화"""
+    img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    
+    if pose_landmarks is None:
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    
+    mp_drawing = mp.solutions.drawing_utils
+    mp_pose = mp.solutions.pose
+    
+    # Pose 랜드마크 그리기
+    mp_drawing.draw_landmarks(
+        img,
+        pose_landmarks,
+        mp_pose.POSE_CONNECTIONS,
+        mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),
+        mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=2, circle_radius=2)
+    )
+    
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
 def validate_image_pair(input_path, output_path, face_app, face_similarity_threshold, 
@@ -105,7 +140,7 @@ def validate_image_pair(input_path, output_path, face_app, face_similarity_thres
     faces_output = face_app.get(output_np)
     
     if len(faces_input) == 0 or len(faces_output) == 0:
-        return False, "얼굴이 검출되지 않음"
+        return False, "얼굴이 검출되지 않음", None
     
     # 가장 큰 얼굴 사용
     face_input = max(faces_input, key=lambda x: x.bbox[2] * x.bbox[3])
@@ -114,25 +149,41 @@ def validate_image_pair(input_path, output_path, face_app, face_similarity_thres
     # 1. 얼굴 유사도 검사 (threshold 이하여야 성공)
     similarity = calculate_face_similarity(face_input, face_output)
     if similarity < face_similarity_threshold:
-        return False, f"얼굴 유사도가 너무 낮음: {similarity:.4f} < {face_similarity_threshold}"
+        return False, f"얼굴 유사도가 너무 낮음: {similarity:.4f} < {face_similarity_threshold}", None
     
     # 2. 얼굴 키포인트 변위 검사
-    keypoint_ok, displacement = check_face_keypoints_displacement(
+    keypoint_ok, displacement, kps1, kps2 = check_face_keypoints_displacement(
         face_input, face_output, 
         (input_image.width, input_image.height),
         face_keypoint_threshold
     )
     if not keypoint_ok:
-        return False, f"얼굴 키포인트 변위 초과: {displacement:.4f} > {face_keypoint_threshold}"
+        # 시각화 이미지 생성
+        input_vis = draw_face_keypoints(input_image, kps1)
+        output_vis = draw_face_keypoints(output_image, kps2)
+        vis_data = {
+            'type': 'face',
+            'input_vis': input_vis,
+            'output_vis': output_vis
+        }
+        return False, f"얼굴 키포인트 변위 초과: {displacement:.4f} > {face_keypoint_threshold}", vis_data
     
     # 3. MediaPipe Pose 키포인트 변위 검사
-    pose_ok, pose_displacement = check_mediapipe_pose_displacement(
+    pose_ok, pose_displacement, pose_landmarks1, pose_landmarks2 = check_mediapipe_pose_displacement(
         input_image, output_image, pose_threshold
     )
     if not pose_ok:
-        return False, f"Pose 키포인트 변위 초과: {pose_displacement:.4f} > {pose_threshold}"
+        # 시각화 이미지 생성
+        input_vis = draw_pose_keypoints(input_image, pose_landmarks1)
+        output_vis = draw_pose_keypoints(output_image, pose_landmarks2)
+        vis_data = {
+            'type': 'pose',
+            'input_vis': input_vis,
+            'output_vis': output_vis
+        }
+        return False, f"Pose 키포인트 변위 초과: {pose_displacement:.4f} > {pose_threshold}", vis_data
     
-    return True, "검증 성공"
+    return True, "검증 성공", None
 
 
 def main():
@@ -142,9 +193,9 @@ def main():
     parser.add_argument("--false_dir", type=str, default="false_cases", help="실패 케이스 저장 디렉토리")
     parser.add_argument("--face_similarity_threshold", type=float, default=0.4, 
                        help="얼굴 유사도 임계값 (이하여야 성공)")
-    parser.add_argument("--face_keypoint_threshold", type=float, default=0.1,
+    parser.add_argument("--face_keypoint_threshold", type=float, default=0.02,
                        help="얼굴 키포인트 변위 임계값 (이미지 대각선 대비 비율)")
-    parser.add_argument("--pose_threshold", type=float, default=0.1,
+    parser.add_argument("--pose_threshold", type=float, default=0.036,
                        help="Pose 키포인트 변위 임계값 (이미지 대각선 대비 비율)")
     parser.add_argument("--remove_false_files", action="store_true",
                        help="실패 케이스 파일을 원본 디렉토리에서도 삭제")
@@ -190,7 +241,7 @@ def main():
         output_file = output_files[stem]
         
         try:
-            is_valid, message = validate_image_pair(
+            is_valid, message, vis_data = validate_image_pair(
                 input_file, output_file, face_app,
                 args.face_similarity_threshold,
                 args.face_keypoint_threshold,
@@ -212,6 +263,16 @@ def main():
                 shutil.copy2(output_file, output_false_path)
                 
                 print(f"  → 실패 케이스 저장: {input_false_path}, {output_false_path}")
+                
+                # 키포인트 시각화 이미지 저장
+                if vis_data is not None:
+                    input_vis_path = os.path.join(args.false_dir, f"{stem}_input_keypoints.jpg")
+                    output_vis_path = os.path.join(args.false_dir, f"{stem}_output_keypoints.jpg")
+                    
+                    Image.fromarray(vis_data['input_vis']).save(input_vis_path, quality=95)
+                    Image.fromarray(vis_data['output_vis']).save(output_vis_path, quality=95)
+                    
+                    print(f"  → 키포인트 시각화 저장: {input_vis_path}, {output_vis_path}")
                 
                 # 원본 디렉토리에서 삭제 옵션
                 if args.remove_false_files:
