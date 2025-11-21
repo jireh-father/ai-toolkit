@@ -1,10 +1,14 @@
 change only hair to bob hair
 change only hair to long hair
 change only hair to short hair
-change only hair to straight hair
-change only hair to wavy hair
-change only hair to braided hair
-change only hair to pigtails
-change only hair to ponytail
-change only hair to bun
-change only hair to topknot
+change only hair to bob straight hair
+change only hair to long straight hair
+change only hair to pixie cut
+change only hair to long bob
+change only hair to shag cut
+change only hair to blunt cut
+change only hair to layered cut
+change only hair to medium layered cut
+change only hair to featuhered cut
+change only hair to medium featuhered cut
+change only hair to crop cut
