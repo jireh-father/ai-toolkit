@@ -330,6 +330,8 @@ def main():
                 if args.remove_false_files:
                     os.remove(input_file)
                     os.remove(output_file)
+                    # remove input_file's txt file
+                    os.remove(os.path.join(os.path.dirname(input_file), f"{stem}.txt"))
                     print(f"  → 원본 파일 삭제 완료")
         
         except Exception as e:
