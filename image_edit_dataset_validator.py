@@ -7,8 +7,6 @@ from PIL import Image
 import cv2
 from insightface.app import FaceAnalysis
 import mediapipe as mp
-import torch
-from transformers import VitPoseForPoseEstimation, AutoImageProcessor
 
 
 def calculate_face_similarity(face1, face2):
@@ -93,69 +91,6 @@ def check_mediapipe_pose_displacement(image1, image2, displacement_threshold=0.1
     return True, max_displacement_ratio, results1.pose_landmarks, results2.pose_landmarks
 
 
-def detect_person_bbox(image):
-    """간단한 person detection - 전체 이미지를 bbox로 사용"""
-    width, height = image.size
-    # 전체 이미지를 bounding box로 사용 (x1, y1, x2, y2)
-    return [[0, 0, width, height]]
-
-
-def check_vitpose_displacement(image1, image2, pose_model, image_processor, displacement_threshold=0.1):
-    """ViTPose로 신체 키포인트 변위 검사 (HuggingFace)"""
-    device = next(pose_model.parameters()).device
-    
-    # Bounding box 생성 (전체 이미지)
-    boxes1 = detect_person_bbox(image1)
-    boxes2 = detect_person_bbox(image2)
-    
-    # 이미지 전처리 (boxes 포함)
-    inputs1 = image_processor(images=image1, boxes=boxes1, return_tensors="pt")
-    inputs2 = image_processor(images=image2, boxes=boxes2, return_tensors="pt")
-    
-    # GPU로 이동
-    inputs1 = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs1.items()}
-    inputs2 = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs2.items()}
-    
-    # Pose 검출
-    with torch.no_grad():
-        outputs1 = pose_model(**inputs1)
-        outputs2 = pose_model(**inputs2)
-    
-    # 키포인트 추출
-    keypoints1 = outputs1.pose_keypoints[0].cpu().numpy()  # shape: (num_keypoints, 3) - x, y, confidence
-    keypoints2 = outputs2.pose_keypoints[0].cpu().numpy()
-    
-    # 이미지 대각선 길이
-    width, height = image1.size
-    diagonal = np.sqrt(width**2 + height**2)
-    
-    # 각 키포인트의 변위 계산 (신뢰도가 높은 것만)
-    max_displacement_ratio = 0.0
-    confidence_threshold = 0.3
-    
-    valid_keypoints = []
-    for i in range(len(keypoints1)):
-        score1 = keypoints1[i, 2]
-        score2 = keypoints2[i, 2]
-        
-        # 낮은 신뢰도는 스킵
-        if score1 < confidence_threshold or score2 < confidence_threshold:
-            continue
-        
-        valid_keypoints.append(i)
-        
-        # 변위 계산
-        kp1 = keypoints1[i, :2]
-        kp2 = keypoints2[i, :2]
-        displacement = np.linalg.norm(kp1 - kp2)
-        displacement_ratio = displacement / diagonal
-        
-        max_displacement_ratio = max(max_displacement_ratio, displacement_ratio)
-        
-        if displacement_ratio > displacement_threshold:
-            return False, displacement_ratio, (keypoints1, valid_keypoints), (keypoints2, valid_keypoints)
-    
-    return True, max_displacement_ratio, (keypoints1, valid_keypoints), (keypoints2, valid_keypoints)
 
 
 def draw_face_keypoints(image, keypoints):
@@ -193,43 +128,9 @@ def draw_pose_keypoints_mediapipe(image, pose_landmarks):
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
-def draw_pose_keypoints_vitpose(image, pose_result):
-    """ViTPose 키포인트를 이미지에 시각화 (HuggingFace)"""
-    img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    
-    if pose_result is None:
-        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    
-    keypoints, valid_keypoints = pose_result  # keypoints: (N, 3), valid_keypoints: list of indices
-    
-    # COCO 17 keypoints skeleton 정의
-    skeleton = [
-        [16, 14], [14, 12], [17, 15], [15, 13], [12, 13],
-        [6, 12], [7, 13], [6, 7], [6, 8], [7, 9],
-        [8, 10], [9, 11], [2, 3], [1, 2], [1, 3],
-        [2, 4], [3, 5], [4, 6], [5, 7]
-    ]
-    
-    # 스켈레톤 그리기
-    for sk in skeleton:
-        idx1, idx2 = sk[0]-1, sk[1]-1
-        if idx1 in valid_keypoints and idx2 in valid_keypoints:
-            pos1 = (int(keypoints[idx1][0]), int(keypoints[idx1][1]))
-            pos2 = (int(keypoints[idx2][0]), int(keypoints[idx2][1]))
-            
-            if keypoints[idx1][2] > 0.3 and keypoints[idx2][2] > 0.3:
-                cv2.line(img, pos1, pos2, (0, 0, 255), 2)
-    
-    # 키포인트 그리기
-    for i in valid_keypoints:
-        if keypoints[i][2] > 0.3:
-            pos = (int(keypoints[i][0]), int(keypoints[i][1]))
-            cv2.circle(img, pos, 3, (0, 255, 0), -1)
-    
-    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
-def validate_image_pair(input_path, output_path, face_app, pose_model, image_processor, pose_estimator, 
+def validate_image_pair(input_path, output_path, face_app, 
                         face_similarity_threshold, face_keypoint_threshold, pose_threshold, 
                         compare_body_keypoints=True, debug=False, debug_dir=None, stem=None):
     """이미지 쌍 검증"""
@@ -291,52 +192,28 @@ def validate_image_pair(input_path, output_path, face_app, pose_model, image_pro
     
     # 3. Pose 키포인트 변위 검사 (compare_body_keypoints가 True일 경우에만)
     if compare_body_keypoints:
-        if pose_estimator == 'mediapipe':
-            pose_ok, pose_displacement, pose_data1, pose_data2 = check_mediapipe_pose_displacement(
-                input_image, output_image, pose_threshold
-            )
+        pose_ok, pose_displacement, pose_data1, pose_data2 = check_mediapipe_pose_displacement(
+            input_image, output_image, pose_threshold
+        )
+        
+        # Debug 모드: Pose 키포인트 시각화 저장
+        if debug and debug_dir and stem:
+            input_pose_vis = draw_pose_keypoints_mediapipe(input_image, pose_data1)
+            output_pose_vis = draw_pose_keypoints_mediapipe(output_image, pose_data2)
             
-            # Debug 모드: Pose 키포인트 시각화 저장
-            if debug and debug_dir and stem:
-                input_pose_vis = draw_pose_keypoints_mediapipe(input_image, pose_data1)
-                output_pose_vis = draw_pose_keypoints_mediapipe(output_image, pose_data2)
-                
-                Image.fromarray(input_pose_vis).save(os.path.join(debug_dir, f"{stem}_input_pose_keypoints.jpg"), quality=95)
-                Image.fromarray(output_pose_vis).save(os.path.join(debug_dir, f"{stem}_output_pose_keypoints.jpg"), quality=95)
-            
-            if not pose_ok:
-                # 시각화 이미지 생성
-                input_vis = draw_pose_keypoints_mediapipe(input_image, pose_data1)
-                output_vis = draw_pose_keypoints_mediapipe(output_image, pose_data2)
-                vis_data = {
-                    'type': 'pose',
-                    'input_vis': input_vis,
-                    'output_vis': output_vis
-                }
-                return False, f"Pose 키포인트 변위 초과: {pose_displacement:.4f} > {pose_threshold}", vis_data
-        elif pose_estimator == 'vitpose':
-            pose_ok, pose_displacement, pose_data1, pose_data2 = check_vitpose_displacement(
-                input_image, output_image, pose_model, image_processor, pose_threshold
-            )
-            
-            # Debug 모드: Pose 키포인트 시각화 저장
-            if debug and debug_dir and stem:
-                input_pose_vis = draw_pose_keypoints_vitpose(input_image, pose_data1)
-                output_pose_vis = draw_pose_keypoints_vitpose(output_image, pose_data2)
-                
-                Image.fromarray(input_pose_vis).save(os.path.join(debug_dir, f"{stem}_input_pose_keypoints.jpg"), quality=95)
-                Image.fromarray(output_pose_vis).save(os.path.join(debug_dir, f"{stem}_output_pose_keypoints.jpg"), quality=95)
-            
-            if not pose_ok:
-                # 시각화 이미지 생성
-                input_vis = draw_pose_keypoints_vitpose(input_image, pose_data1)
-                output_vis = draw_pose_keypoints_vitpose(output_image, pose_data2)
-                vis_data = {
-                    'type': 'pose',
-                    'input_vis': input_vis,
-                    'output_vis': output_vis
-                }
-                return False, f"Pose 키포인트 변위 초과: {pose_displacement:.4f} > {pose_threshold}", vis_data
+            Image.fromarray(input_pose_vis).save(os.path.join(debug_dir, f"{stem}_input_pose_keypoints.jpg"), quality=95)
+            Image.fromarray(output_pose_vis).save(os.path.join(debug_dir, f"{stem}_output_pose_keypoints.jpg"), quality=95)
+        
+        if not pose_ok:
+            # 시각화 이미지 생성
+            input_vis = draw_pose_keypoints_mediapipe(input_image, pose_data1)
+            output_vis = draw_pose_keypoints_mediapipe(output_image, pose_data2)
+            vis_data = {
+                'type': 'pose',
+                'input_vis': input_vis,
+                'output_vis': output_vis
+            }
+            return False, f"Pose 키포인트 변위 초과: {pose_displacement:.4f} > {pose_threshold}", vis_data
     
     return True, "검증 성공", None
 
@@ -354,11 +231,6 @@ def main():
                        help="Pose 키포인트 변위 임계값 (이미지 대각선 대비 비율)")
     parser.add_argument("--compare_body_keypoints", action="store_true",
                        help="몸 키포인트 비교 활성화 (비활성화 시 얼굴만 검사)")
-    parser.add_argument("--pose_estimator", type=str, default="mediapipe", choices=["mediapipe", "vitpose"],
-                       help="Pose estimation 모델 선택 (mediapipe 또는 vitpose, compare_body_keypoints가 True일 때만 사용)")
-    parser.add_argument("--vitpose_model", type=str, 
-                       default="usyd-community/vitpose-base-simple",
-                       help="ViTPose HuggingFace 모델 이름 (pose_estimator=vitpose일 때 사용)")
     parser.add_argument("--remove_false_files", action="store_true",
                        help="실패 케이스 파일을 원본 디렉토리에서도 삭제")
     parser.add_argument("--debug", action="store_true",
@@ -382,18 +254,8 @@ def main():
     print("InsightFace 모델 로딩 완료!")
     
     # Pose 모델 초기화 (compare_body_keypoints가 True일 때만)
-    pose_model = None
-    image_processor = None
     if args.compare_body_keypoints:
-        if args.pose_estimator == 'vitpose':
-            print("ViTPose 모델 로딩 중...")
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            pose_model = VitPoseForPoseEstimation.from_pretrained(args.vitpose_model).to(device)
-            image_processor = AutoImageProcessor.from_pretrained(args.vitpose_model)
-            pose_model.eval()
-            print("ViTPose 모델 로딩 완료!")
-        else:
-            print("MediaPipe Pose 사용")
+        print("MediaPipe Pose 사용")
     else:
         print("몸 키포인트 비교 비활성화 (얼굴만 검사)")
     
@@ -428,7 +290,7 @@ def main():
         
         try:
             is_valid, message, vis_data = validate_image_pair(
-                input_file, output_file, face_app, pose_model, image_processor, args.pose_estimator,
+                input_file, output_file, face_app,
                 args.face_similarity_threshold,
                 args.face_keypoint_threshold,
                 args.pose_threshold,
