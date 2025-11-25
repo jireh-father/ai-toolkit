@@ -39,6 +39,16 @@ export interface GpuInfo {
   fan: GpuFan;
 }
 
+export interface CpuInfo {
+  name: string;
+  cores: number;
+  temperature: number;
+  totalMemory: number;
+  freeMemory: number;
+  availableMemory: number;
+  currentLoad: number;
+}
+
 export interface GPUApiResponse {
   hasNvidiaSmi: boolean;
   gpus: GpuInfo[];
@@ -83,12 +93,15 @@ export interface DatasetConfig {
   cache_latents_to_disk?: boolean;
   resolution: number[];
   controls: string[];
-  control_path: string | null;
+  control_path?: string | null;
   num_frames: number;
   shrink_video_to_frames: boolean;
   do_i2v: boolean;
   flip_x: boolean;
   flip_y: boolean;
+  control_path_1?: string | null;
+  control_path_2?: string | null;
+  control_path_3?: string | null;
 }
 
 export interface EMAConfig {
@@ -117,11 +130,17 @@ export interface TrainConfig {
     weight_decay: number;
   };
   skip_first_sample: boolean;
+  force_first_sample: boolean;
   disable_sampling: boolean;
   diff_output_preservation: boolean;
   diff_output_preservation_multiplier: number;
   diff_output_preservation_class: string;
+  blank_prompt_preservation?: boolean;
+  blank_prompt_preservation_multiplier?: number;
   switch_boundary_every: number;
+  loss_type: 'mse' | 'mae' | 'wavelet' | 'stepped';
+  do_differential_guidance?: boolean;
+  differential_guidance_scale?: number;
 }
 
 export interface QuantizeKwargsConfig {
@@ -138,11 +157,14 @@ export interface ModelConfig {
   arch: string;
   low_vram: boolean;
   model_kwargs: { [key: string]: any };
+  layer_offloading?: boolean;
+  layer_offloading_transformer_percent?: number;
+  layer_offloading_text_encoder_percent?: number;
 }
 
 export interface SampleItem {
   prompt: string;
-  width?: number
+  width?: number;
   height?: number;
   neg?: string;
   seed?: number;
@@ -152,6 +174,10 @@ export interface SampleItem {
   num_frames?: number;
   ctrl_img?: string | null;
   ctrl_idx?: number;
+  network_multiplier?: number;
+  ctrl_img_1?: string | null;
+  ctrl_img_2?: string | null;
+  ctrl_img_3?: string | null;
 }
 
 export interface SampleConfig {
@@ -170,14 +196,24 @@ export interface SampleConfig {
   fps: number;
 }
 
+export interface SliderConfig {
+  guidance_strength?: number;
+  anchor_strength?: number;
+  positive_prompt?: string;
+  negative_prompt?: string;
+  target_class?: string;
+  anchor_class?: string | null;
+}
+
 export interface ProcessConfig {
-  type: 'ui_trainer';
+  type: string;
   sqlite_db_path?: string;
   training_folder: string;
   performance_log_every: number;
   trigger_word: string | null;
   device: string;
   network?: NetworkConfig;
+  slider?: SliderConfig;
   save: SaveConfig;
   datasets: DatasetConfig[];
   train: TrainConfig;
@@ -202,7 +238,7 @@ export interface JobConfig {
 }
 
 export interface ConfigDoc {
-  title: string;
+  title: string | React.ReactNode;
   description: React.ReactNode;
 }
 
@@ -214,3 +250,5 @@ export interface GroupedSelectOption {
   readonly label: string;
   readonly options: SelectOption[];
 }
+
+export type JobStatus = 'queued' | 'running' | 'stopping' | 'stopped' | 'completed' | 'error';
