@@ -2,11 +2,11 @@
 job: extension
 config:
   # this name will be the folder and filename name
-  name: "jellyperm_dimi16_p512-756-1024_single"
+  name: "jellyperm_dimi16_p512-756-1024_single_max250steps"
   process:
     - type: 'sd_trainer'
       # root folder to save training sessions/samples/weights
-      training_folder: "output_jellyperm_dim16_p512-756-1024_single"
+      training_folder: "output_jellyperm_dim16_p512-756-1024_single_max250steps"
       # uncomment to see performance stats in the terminal every N steps
 #      performance_log_every: 1000
       device: cuda:0
