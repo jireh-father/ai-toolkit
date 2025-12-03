@@ -74,6 +74,7 @@ config:
         # and then you can use this model.
         name_or_path: "black-forest-labs/FLUX.2-dev"
         arch: "flux2"
+        qtype: "qfloat8"
         quantize_te: true
         qtype_te: "qfloat8"
         quantize: true  # run 8bit mixed precision
