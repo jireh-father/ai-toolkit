@@ -15,8 +15,8 @@ config:
 #      trigger_word: "p3r5on"
       network:
         type: "lora"
-        linear: 16
-        linear_alpha: 16
+        linear: 4
+        linear_alpha: 4
       save:
         dtype: float16 # precision to save
         save_every: 25 # save every this many steps
@@ -42,7 +42,7 @@ config:
           shuffle_tokens: false  # shuffle caption order, split by commas
           cache_latents_to_disk: true  # leave this true unless you know what you're doing
           # Kontext runs images in at 2x the latent size. It may OOM at 1024 resolution with 24GB vram.
-          resolution: [ 512, 768, 1024 ] #, 768 ]  # flux enjoys multiple resolutions
+          resolution: [ 512 ] #, 768, 1024 ] #, 768 ]  # flux enjoys multiple resolutions
           # resolution: [ 512, 768, 1024 ]
       train:
         batch_size: 1
