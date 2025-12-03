@@ -74,6 +74,8 @@ config:
         # and then you can use this model.
         name_or_path: "black-forest-labs/FLUX.2-dev"
         arch: "flux2"
+        quantize_te: true
+        qtype_te: "qfloat8"
         quantize: true  # run 8bit mixed precision
         low_vram: true  # uncomment this if the GPU is connected to your monitors. It will use less vram to quantize, but is slower.
 #      sample:
