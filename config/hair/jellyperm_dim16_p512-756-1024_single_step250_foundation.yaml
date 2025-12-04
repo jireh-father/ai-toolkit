@@ -2,21 +2,21 @@
 job: extension
 config:
   # this name will be the folder and filename name
-  name: "flux2_jellyperm_dimi16_p512-756-1024_single_max250steps"
+  name: "jellyperm_dimi16_p512-756-1024_single_max250steps_foundation"
   process:
     - type: 'sd_trainer'
       # root folder to save training sessions/samples/weights
-      training_folder: "output_flux2_jellyperm_dim16_p512-756-1024_single_max250steps"
+      training_folder: "output_jellyperm_dim16_p512-756-1024_single_max250steps_foundation"
       # uncomment to see performance stats in the terminal every N steps
 #      performance_log_every: 1000
       device: cuda:0
       # if a trigger word is specified, it will be added to captions of training data if it does not already exist
       # alternatively, in your captions you can add [trigger] and it will be replaced with the trigger word
 #      trigger_word: "p3r5on"
-      network:
-        type: "lora"
-        linear: 4
-        linear_alpha: 4
+      # network:
+      #   type: "lora"
+      #   linear: 16
+      #   linear_alpha: 16
       save:
         dtype: float16 # precision to save
         save_every: 25 # save every this many steps
@@ -72,8 +72,8 @@ config:
         # huggingface model name or path. This model is gated.
         # visit https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev to accept the terms and conditions
         # and then you can use this model.
-        name_or_path: "black-forest-labs/FLUX.2-dev"
-        arch: "flux2"
+        name_or_path: "black-forest-labs/FLUX.1-Kontext-dev"
+        arch: "flux_kontext"
         qtype: "qfloat8"
         quantize_te: true
         qtype_te: "qfloat8"
