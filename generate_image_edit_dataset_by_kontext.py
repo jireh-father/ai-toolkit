@@ -69,6 +69,10 @@ def main():
     parser.add_argument("--label_prompt", type=str, default="change only hair to jelly perm hairstyle", help="레이블 프롬프트 (resized 이미지와 함께 txt 파일로 저장)")
     parser.add_argument("--guidance_scale", type=float, default=2.5, help="가이던스 스케일")
     parser.add_argument("--num_repeat", type=int, default=3, help="한 이미지당 생성할 반복 횟수")
+    parser.add_argument("--lora_path", type=str, default=None, help="LoRA 가중치 전체 경로 (예: Kontext-Style/Line_lora/Line_lora_weights.safetensors 또는 로컬 경로)")
+    parser.add_argument("--lora_scale", type=float, default=1.0, help="LoRA 적용 강도")
+    # num_inference_steps
+    parser.add_argument("--num_inference_steps", type=int, default=28, help="생성 단계 수")
     
     args = parser.parse_args()
     
@@ -100,6 +104,22 @@ def main():
     )
     pipe.to("cuda")
     print("모델 로딩 완료!")
+
+    pipe.load_lora_weights("alimama-creative/FLUX.1-Turbo-Alpha", adapter_name="turbo")
+    
+    # LoRA 로딩 (경로가 지정된 경우에만)
+    if args.lora_path:
+        print(f"LoRA 로딩 중: {args.lora_path}")
+        
+        lora_dir = os.path.dirname(args.lora_path)
+        lora_filename = os.path.basename(args.lora_path)
+        
+        pipe.load_lora_weights(lora_dir, adapter_name="lora", weight_name=lora_filename, local_files_only=True)
+        
+        pipe.set_adapters(["lora", "turbo"], adapter_weights=[args.lora_scale, args.lora_scale])
+        print(f"LoRA 로딩 완료! (scale: {args.lora_scale})")
+    
+    pipe.fuse_lora()
     
     # 지원하는 이미지 확장자
     image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}
@@ -167,7 +187,8 @@ def main():
                         "prompt": selected_prompt,
                         "guidance_scale": args.guidance_scale,
                         "width": input_image.width,
-                        "height": input_image.height
+                        "height": input_image.height,
+                        "num_inference_steps": args.num_inference_steps
                     }
                     
                     image = pipe(**pipe_kwargs).images[0]
