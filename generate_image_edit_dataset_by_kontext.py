@@ -72,7 +72,7 @@ def main():
     parser.add_argument("--lora_path", type=str, default=None, help="LoRA 가중치 전체 경로 (예: Kontext-Style/Line_lora/Line_lora_weights.safetensors 또는 로컬 경로)")
     parser.add_argument("--lora_scale", type=float, default=1.0, help="LoRA 적용 강도")
     # num_inference_steps
-    parser.add_argument("--num_inference_steps", type=int, default=28, help="생성 단계 수")
+    parser.add_argument("--num_inference_steps", type=int, default=8, help="생성 단계 수")
     
     args = parser.parse_args()
     
