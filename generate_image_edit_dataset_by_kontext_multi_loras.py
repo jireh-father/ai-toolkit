@@ -118,6 +118,8 @@ def main():
     parser.add_argument("--num_inference_steps", type=int, default=8, help="생성 단계 수")
     parser.add_argument("--another_lora_when_repeat", default=False, action="store_true", help="반복 시 다른 LoRA 사용")
     #seed
+    parser.add_argument("--seed", type=int, default=42, help="랜덤 시드")
+    #seed
     
     
     args = parser.parse_args()
