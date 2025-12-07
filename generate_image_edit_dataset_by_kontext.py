@@ -116,7 +116,7 @@ def main():
         
         pipe.load_lora_weights(lora_dir, adapter_name="lora", weight_name=lora_filename, local_files_only=True)
         
-        # pipe.set_adapters(["lora", "turbo"], adapter_weights=[args.lora_scale, args.lora_scale])
+        pipe.set_adapters(["lora", "turbo"], adapter_weights=[args.lora_scale, args.lora_scale])
         print(f"LoRA 로딩 완료! (scale: {args.lora_scale})")
     
     pipe.fuse_lora()
