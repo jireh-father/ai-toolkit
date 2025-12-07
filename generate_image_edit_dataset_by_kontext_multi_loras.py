@@ -112,7 +112,7 @@ def main():
     parser.add_argument("--prompts", type=str, required=True, help="프롬프트들 (:::로 구분, lora_paths 개수와 동일해야 함)")
     parser.add_argument("--label_prompt", type=str, default="change only hair to jelly perm hairstyle", help="레이블 프롬프트 (resized 이미지와 함께 txt 파일로 저장)")
     parser.add_argument("--guidance_scale", type=float, default=2.5, help="가이던스 스케일")
-    parser.add_argument("--num_repeat", type=int, default=3, help="한 이미지당 생성할 반복 횟수")
+    parser.add_argument("--num_repeat", type=int, default=1, help="한 이미지당 생성할 반복 횟수")
     parser.add_argument("--lora_paths", type=str, nargs='+', default=[], help="LoRA 가중치 경로들 (여러 개 지정 가능)")
     parser.add_argument("--lora_scale", type=float, default=1.0, help="LoRA 적용 강도")
     parser.add_argument("--num_inference_steps", type=int, default=8, help="생성 단계 수")
