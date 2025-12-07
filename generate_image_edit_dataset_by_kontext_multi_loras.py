@@ -116,6 +116,7 @@ def main():
     parser.add_argument("--lora_paths", type=str, nargs='+', default=[], help="LoRA 가중치 경로들 (여러 개 지정 가능)")
     parser.add_argument("--lora_scale", type=float, default=1.0, help="LoRA 적용 강도")
     parser.add_argument("--num_inference_steps", type=int, default=8, help="생성 단계 수")
+    parser.add_argument("--another_lora_when_repeat", default=False, action="store_true", help="반복 시 다른 LoRA 사용")
     #seed
     
     
@@ -192,9 +193,12 @@ def main():
         
         # 안쪽 루프: LoRA별로 처리
         for lora_idx, lora_path in enumerate(args.lora_paths):
-            image_group_idx = lora_idx + repeat_idx
-            if image_group_idx >= len(image_groups):
-                image_group_idx = 0
+            if args.another_lora_when_repeat:
+                image_group_idx = lora_idx + repeat_idx
+                if image_group_idx >= len(image_groups):
+                    image_group_idx = 0
+            else:
+                image_group_idx = lora_idx
             image_group = image_groups[image_group_idx]
             
             if not image_group:
