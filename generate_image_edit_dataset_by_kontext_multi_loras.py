@@ -27,6 +27,12 @@ PREFERED_KONTEXT_RESOLUTIONS = [
     (1568, 672),
 ]
 
+COLOR_LIST = [
+    "red", "blue", "green", "yellow", "purple", "pink", "orange", "brown",
+    "black", "white", "gray", "silver", "gold", "beige", "navy", "teal",
+    "cyan", "magenta", "lime", "maroon", "olive", "aqua", "coral", "indigo"
+]
+
 def convert_to_flux_kontext_image_scale(image):
     """PIL 이미지를 Kontext에 맞는 해상도로 리사이즈"""
     width = image.width
@@ -117,6 +123,8 @@ def main():
     parser.add_argument("--lora_scale", type=float, default=1.0, help="LoRA 적용 강도")
     parser.add_argument("--num_inference_steps", type=int, default=8, help="생성 단계 수")
     parser.add_argument("--another_lora_when_repeat", default=False, action="store_true", help="반복 시 다른 LoRA 사용")
+    parser.add_argument("--force_gen", default=False, action="store_true", help="기존 파일이 있어도 강제로 생성")
+    parser.add_argument("--use_color", default=False, action="store_true", help="프롬프트에 {COLOR} 치환 사용")
     #seed
     parser.add_argument("--seed", type=int, default=42, help="랜덤 시드")
     #seed
@@ -227,6 +235,21 @@ def main():
                 print(f"\n  [이미지 {img_idx + 1}/{len(image_group)}] {image_file.name} (전체 진행: {current_iteration}/{total_iterations})")
                 
                 try:
+                    # 변환된 입력 이미지 저장
+                    resized_filename = f"{image_file.stem}_lora{lora_idx}_{repeat_idx}.jpg"
+                    resized_path = os.path.join(args.resized_input_dir, resized_filename)
+                    label_filename = f"{image_file.stem}_lora{lora_idx}_{repeat_idx}.txt"
+                    label_path = os.path.join(args.resized_input_dir, label_filename)
+                    
+                    # 이미 파일이 존재하면 스킵 (force_gen이 False인 경우)
+                    if not args.force_gen:
+                        resized_exists = os.path.exists(resized_path)
+                        label_exists = os.path.exists(label_path) if args.label_prompt else True
+                        
+                        if resized_exists and (args.label_prompt and label_exists):
+                            print(f"    - 이미 파일이 존재합니다. 스킵합니다.")
+                            continue
+
                     # 로컬 이미지 로드
                     input_image = Image.open(image_file)
                     
@@ -241,21 +264,24 @@ def main():
                     
                     # 해당 LoRA에 맞는 프롬프트 사용
                     selected_prompt = prompts[lora_idx]
+                    
+                    # use_color가 True이면 {COLOR}를 랜덤 색상으로 치환
+                    if args.use_color and "{COLOR}" in selected_prompt:
+                        selected_color = random.choice(COLOR_LIST)
+                        selected_prompt = selected_prompt.format(COLOR=selected_color)
+                        print(f"    - 선택된 색상: {selected_color}")
+                    
                     print(f"    - 사용 프롬프트: {selected_prompt}")
                     
                     # 파일명 생성 (LoRA 인덱스 + 반복 인덱스 포함)
                     output_filename = f"{image_file.stem}_lora{lora_idx}_{repeat_idx}.jpg"
                     
-                    # 변환된 입력 이미지 저장
-                    resized_filename = f"{image_file.stem}_lora{lora_idx}_{repeat_idx}.jpg"
-                    resized_path = os.path.join(args.resized_input_dir, resized_filename)
+                    
                     input_image.save(resized_path, format='JPEG', quality=100)
                     print(f"    - 변환된 입력 이미지 저장: {resized_path}")
                     
                     # 레이블 프롬프트를 txt 파일로 저장
                     if args.label_prompt:
-                        label_filename = f"{image_file.stem}_lora{lora_idx}_{repeat_idx}.txt"
-                        label_path = os.path.join(args.resized_input_dir, label_filename)
                         with open(label_path, 'w', encoding='utf-8') as f:
                             f.write(args.label_prompt)
                         print(f"    - 레이블 텍스트 저장: {label_path}")
