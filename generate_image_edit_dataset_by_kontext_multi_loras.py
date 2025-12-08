@@ -28,9 +28,12 @@ PREFERED_KONTEXT_RESOLUTIONS = [
 ]
 
 COLOR_LIST = [
-    "red", "blue", "green", "yellow", "purple", "pink", "orange", "brown",
-    "black", "white", "gray", "silver", "gold", "beige", "navy", "teal",
-    "cyan", "magenta", "lime", "maroon", "olive", "aqua", "coral", "indigo"
+    "gray", "brown", "purple", "blonde", "gold brown",
+    "dark brown", "red violet", "red brown", "red orange", "red wine",
+    "matte brown", "mushroom blonde", "milk brown", "pale gray",
+    "pale violet", "pale beige", "pale brown", "pale blonde", "pale blue",
+    "pale khaki", "pale khaki brown", "pale purple", "pale pink",
+    "orange brown", "choco brown", "khaki brown", "pink brown"
 ]
 
 def convert_to_flux_kontext_image_scale(image):
