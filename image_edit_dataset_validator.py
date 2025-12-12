@@ -132,7 +132,7 @@ def draw_pose_keypoints_mediapipe(image, pose_landmarks):
 
 def validate_image_pair(input_path, output_path, face_app, 
                         face_similarity_threshold, face_keypoint_threshold, pose_threshold, 
-                        compare_body_keypoints=True, debug=False, debug_dir=None, stem=None):
+                        compare_body_keypoints=True, debug=False, debug_dir=None, stem=None, skip_no_face=False):
     """이미지 쌍 검증"""
     # 이미지 로드
     input_image = Image.open(input_path)
@@ -151,6 +151,9 @@ def validate_image_pair(input_path, output_path, face_app,
     # InsightFace로 얼굴 검출
     faces_input = face_app.get(input_np)
     faces_output = face_app.get(output_np)
+
+    if len(faces_input) == 0 and len(faces_output) == 0:
+        return True if skip_no_face else False, "얼굴이 검출되지 않음", None
     
     if len(faces_input) == 0 or len(faces_output) == 0:
         return False, "얼굴이 검출되지 않음", None
@@ -237,10 +240,14 @@ def main():
                        help="디버그 모드: 모든 이미지의 키포인트 시각화를 debug_dir에 저장")
     parser.add_argument("--debug_dir", type=str, default="debug_visualizations",
                        help="디버그 시각화 저장 디렉토리")
+    # skip_no_face
+    parser.add_argument("--skip_no_face", action="store_true", default=False,
+                       help="얼굴이 검출되지 않으면 건너뜀")
     
     args = parser.parse_args()
     
     # 실패 케이스 디렉토리 생성
+    
     os.makedirs(args.false_dir, exist_ok=True)
     
     # 디버그 디렉토리 생성
@@ -297,7 +304,8 @@ def main():
                 args.compare_body_keypoints,
                 args.debug,
                 args.debug_dir if args.debug else None,
-                stem
+                stem,
+                args.skip_no_face,
             )
             
             if is_valid:
