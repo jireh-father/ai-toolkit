@@ -269,6 +269,7 @@ def batch_request_to_comfyui(
         
         try:
             # ComfyUI에 요청
+            print(modified_workflow)
             prompt_id = queue_prompt(modified_workflow, current_host)
             results[image_path] = prompt_id
             print(f"[{idx + 1}/{len(image_files)}] {os.path.basename(image_path)} -> {current_host} (prompt_id: {prompt_id})")
