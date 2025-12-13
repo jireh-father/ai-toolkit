@@ -1,0 +1,210 @@
+{
+  "1": {
+    "inputs": {
+      "image": "img_291763_FEMALE_LONG_애쉬브라운_밀크브라운_레이어드컷_lora3_0.jpg",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "98": {
+    "inputs": {
+      "ckpt_name": "realisticVisionV60B1_v51VAE.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "99": {
+    "inputs": {
+      "text": "30yo korean woman, short face\n",
+      "speak_and_recognation": true,
+      "clip": [
+        "98",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "100": {
+    "inputs": {
+      "text": "(nsfw:1.5), (logo:1.5), (text:1.5), (watermark:1.5), ng_deepnegative_v1_75t",
+      "speak_and_recognation": true,
+      "clip": [
+        "98",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "103": {
+    "inputs": {
+      "guide_size": 256,
+      "guide_size_for": true,
+      "max_size": 768,
+      "seed": 960840121561853,
+      "steps": 10,
+      "cfg": 3,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.6,
+      "feather": 20,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": false,
+      "noise_mask_feather": 20,
+      "tiled_encode": false,
+      "tiled_decode": false,
+      "speak_and_recognation": true,
+      "image": [
+        "1",
+        0
+      ],
+      "segs": [
+        "232",
+        0
+      ],
+      "model": [
+        "98",
+        0
+      ],
+      "clip": [
+        "98",
+        1
+      ],
+      "vae": [
+        "98",
+        2
+      ],
+      "positive": [
+        "99",
+        0
+      ],
+      "negative": [
+        "100",
+        0
+      ]
+    },
+    "class_type": "DetailerForEach",
+    "_meta": {
+      "title": "Detailer (SEGS)"
+    }
+  },
+  "229": {
+    "inputs": {
+      "model_name": "sam_vit_b_01ec64.pth",
+      "device_mode": "Prefer GPU"
+    },
+    "class_type": "SAMLoader",
+    "_meta": {
+      "title": "SAMLoader (Impact)"
+    }
+  },
+  "232": {
+    "inputs": {
+      "combined": true,
+      "crop_factor": 3,
+      "bbox_fill": false,
+      "drop_size": 10,
+      "contour_fill": false,
+      "mask": [
+        "246",
+        0
+      ]
+    },
+    "class_type": "MaskToSEGS",
+    "_meta": {
+      "title": "MASK to SEGS"
+    }
+  },
+  "235": {
+    "inputs": {
+      "max_faces": 1,
+      "min_confidence": 0.1,
+      "resolution": 1024,
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "MediaPipe-FaceMeshPreprocessor",
+    "_meta": {
+      "title": "MediaPipe Face Mesh"
+    }
+  },
+  "242": {
+    "inputs": {
+      "crop_factor": 3,
+      "bbox_fill": false,
+      "crop_min_size": 50,
+      "drop_size": 1,
+      "dilation": 0,
+      "face": true,
+      "mouth": false,
+      "left_eyebrow": false,
+      "left_eye": false,
+      "left_pupil": false,
+      "right_eyebrow": false,
+      "right_eye": false,
+      "right_pupil": false,
+      "image": [
+        "235",
+        0
+      ]
+    },
+    "class_type": "MediaPipeFaceMeshToSEGS",
+    "_meta": {
+      "title": "MediaPipe FaceMesh to SEGS"
+    }
+  },
+  "246": {
+    "inputs": {
+      "detection_hint": "center-1",
+      "dilation": 0,
+      "threshold": 0.93,
+      "bbox_expansion": 0,
+      "mask_hint_threshold": 0.7,
+      "mask_hint_use_negative": "False",
+      "sam_model": [
+        "229",
+        0
+      ],
+      "segs": [
+        "242",
+        0
+      ],
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "SAMDetectorSegmented",
+    "_meta": {
+      "title": "SAMDetector (segmented)"
+    }
+  },
+  "263": {
+    "inputs": {
+      "filename_prefix": "hahahahaha",
+      "images": [
+        "103",
+        0
+      ]
+    },
+    "class_type": "SaveImageJpg",
+    "_meta": {
+      "title": "SaveImageJpg"
+    }
+  }
+}
