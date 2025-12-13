@@ -147,7 +147,6 @@ def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: 
     if clip_text_result:
         node_id, node = clip_text_result
         random_prompt = generate_random_prompt(gender)
-        print(random_prompt)
         node["inputs"]["text"] = random_prompt
     
     return modified_workflow
@@ -222,7 +221,8 @@ def batch_request_to_comfyui(
     workflow_path: str,
     workflow_type: str,
     comfyui_hosts: list[str],
-    gender: str
+    gender: str,
+    output_workflow_dir: str,
 ) -> dict[str, str]:
     """
     이미지 파일들을 라운드로빈 방식으로 ComfyUI 서버에 요청합니다.
@@ -233,7 +233,7 @@ def batch_request_to_comfyui(
         workflow_type: 워크플로우 타입
         comfyui_hosts: ComfyUI 서버 호스트 목록 (ip:port 형식)
         gender: 성별 (male 또는 female)
-        
+        output_workflow_dir: ComfyUI 워크플로우 JSON 파일 저장 디렉토리        
     Returns:
         이미지 경로와 prompt_id 매핑 딕셔너리
     """
@@ -267,9 +267,12 @@ def batch_request_to_comfyui(
             gender=gender
         )
         
+        if output_workflow_dir:
+            # 워크플로우 저장
+            json.dump(modified_workflow, open(os.path.join(output_workflow_dir, os.path.basename(image_path) + '.json'), 'w+'), indent=2, ensure_ascii=False)
+        
         try:
             # ComfyUI에 요청
-            print(modified_workflow)
             prompt_id = queue_prompt(modified_workflow, current_host)
             results[image_path] = prompt_id
             print(f"[{idx + 1}/{len(image_files)}] {os.path.basename(image_path)} -> {current_host} (prompt_id: {prompt_id})")
@@ -342,8 +345,20 @@ def main():
         default=0,
         help='랜덤 시드 (기본값: 0)'
     )
+
+    #output_workflow_dir
+    parser.add_argument(
+        '--output_workflow_dir',
+        type=str,
+        default=None,
+        dest='comfyui_output_workflow_dir',
+        help='ComfyUI 워크플로우 JSON 파일 저장 디렉토리'
+    )
     
     args = parser.parse_args()
+
+    if args.output_workflow_dir:
+        os.makedirs(args.output_workflow_dir, exist_ok=True)
     
     # 입력 검증
     if not os.path.isdir(args.image_dir):
@@ -372,7 +387,8 @@ def main():
         workflow_path=args.comfyui_workflow_json_path,
         workflow_type=args.workflow_type,
         comfyui_hosts=args.comfyui_hosts,
-        gender=args.gender
+        gender=args.gender,
+        output_workflow_dir=args.comfyui_output_workflow_dir
     )
     
     # 결과 요약
