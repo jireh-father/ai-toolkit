@@ -147,6 +147,7 @@ def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: 
     if clip_text_result:
         node_id, node = clip_text_result
         random_prompt = generate_random_prompt(gender)
+        print(random_prompt)
         node["inputs"]["text"] = random_prompt
     
     return modified_workflow
@@ -194,8 +195,6 @@ def modify_workflow_for_image(
     workflow_type: str,
     image_path: str,
     gender: str,
-    mp_image_size: tuple[int, int] | None = None,
-    prompt: str | None = None
 ) -> dict:
     """
     워크플로우 타입에 따라 이미지 경로, MP 이미지 사이즈, 프롬프트를 동적으로 변경합니다.
@@ -334,6 +333,14 @@ def main():
         choices=['male', 'female'],
         help='성별 (기본값: female)'
     )
+
+    #seed
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=0,
+        help='랜덤 시드 (기본값: 0)'
+    )
     
     args = parser.parse_args()
     
@@ -355,6 +362,8 @@ def main():
     print(f"성별: {args.gender}")
     print(f"ComfyUI 호스트: {', '.join(args.comfyui_hosts)}")
     print("=" * 60)
+
+    random.seed(args.seed)
     
     # 배치 요청 실행
     results = batch_request_to_comfyui(
