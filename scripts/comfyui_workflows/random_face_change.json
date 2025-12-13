@@ -11,7 +11,7 @@
   },
   "98": {
     "inputs": {
-      "ckpt_name": "realisticVisionV60B1_v51HyperInpaintVAE.safetensors"
+      "ckpt_name": "realisticVisionV60B1_v51HyperVAE.safetensors"
     },
     "class_type": "CheckpointLoaderSimple",
     "_meta": {
