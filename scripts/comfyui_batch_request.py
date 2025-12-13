@@ -297,7 +297,7 @@ def main():
     parser.add_argument(
         '--workflow',
         type=str,
-        default='comfyui_workflows/random_face_change.json',
+        default='./scripts/comfyui_workflows/random_face_change.json',
         dest='comfyui_workflow_json_path',
         help='ComfyUI 워크플로우 JSON 파일 경로 (기본값: comfyui_workflows/random_face_change.json)'
     )
