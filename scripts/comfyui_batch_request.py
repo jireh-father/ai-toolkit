@@ -351,7 +351,6 @@ def main():
         '--output_workflow_dir',
         type=str,
         default=None,
-        dest='comfyui_output_workflow_dir',
         help='ComfyUI 워크플로우 JSON 파일 저장 디렉토리'
     )
     
@@ -388,7 +387,7 @@ def main():
         workflow_type=args.workflow_type,
         comfyui_hosts=args.comfyui_hosts,
         gender=args.gender,
-        output_workflow_dir=args.comfyui_output_workflow_dir
+        output_workflow_dir=args.output_workflow_dir
     )
     
     # 결과 요약
