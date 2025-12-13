@@ -127,7 +127,7 @@ def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: 
     load_image_result = find_node_by_class_type(modified_workflow, "LoadImage")
     if load_image_result:
         node_id, node = load_image_result
-        node["inputs"]["image"] = image_filename
+        node["inputs"]["image"] = image_path
     
     # 2. SaveImageJpg 노드 수정
     save_image_result = find_node_by_class_type(modified_workflow, "SaveImageJpg")
