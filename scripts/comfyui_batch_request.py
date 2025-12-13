@@ -19,9 +19,9 @@ from urllib import request
 # 랜덤 프롬프트 생성을 위한 속성 리스트
 AGES = ["20yo", "30yo", "40yo", "50yo"]
 COUNTRIES = [
-    "korean", "japanese", "chinese", "thai", "vietnamese", "indian",
-    "brazilian", "mexican", "american", "british", "french", "german",
-    "italian", "spanish", "russian", "swedish", "nigerian", "egyptian"
+    "korean", "japanese", "chinese", "thai", "vietnamese", "indian", "indonesian", "iranian",
+    "philippines", "brazilian", "mexican", "american", "british", "german",
+    "russian", "swedish", "nigerian", "egyptian"
 ]
 EXPRESSIONS = [
     "laugh expression", "expressionless", "angry expression",
