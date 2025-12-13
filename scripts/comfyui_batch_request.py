@@ -30,6 +30,20 @@ EXPRESSIONS = [
 EYE_SIZES = ["big eyes", "small eyes"]
 MOUTH_SIZES = ["big mouth", "small mouth"]
 
+# 배경 변경을 위한 색상 리스트
+BACKGROUND_COLORS = [
+    "white", "black", "gray", "red", "blue", "green", "yellow", "orange",
+    "pink", "purple", "beige", "brown", "navy", "sky blue", "mint",
+    "ivory", "cream", "lavender", "coral", "teal"
+]
+
+# 배경 변경을 위한 실제 배경 리스트
+REAL_BACKGROUNDS = [
+    "ocean", "salon", "river", "cute room", "gorgeous room", "city", "night city",
+    "beach", "sunset", "sunrise", "garden", "park",
+    "library", "cafe", "restaurant", "office", "studio", "rooftop"
+]
+
 def queue_prompt(prompt_workflow, ip):
     p = {"prompt": prompt_workflow}
     data = json.dumps(p).encode('utf-8')
@@ -94,6 +108,24 @@ def generate_random_prompt(gender: str) -> str:
     return f"{age} {country} {gender_word}, {expression}, {eye_size}, {mouth_size}"
 
 
+def generate_background_prompt() -> str:
+    """
+    배경 변경을 위한 동적 프롬프트를 생성합니다.
+    simple_color 또는 real 배경 중 랜덤으로 선택합니다.
+    
+    Returns:
+        배경 변경 프롬프트 문자열
+    """
+    prompt_type = random.choice(["simple_color", "real"])
+    
+    if prompt_type == "simple_color":
+        color = random.choice(BACKGROUND_COLORS)
+        return f"change only background to {color} background"
+    else:
+        real_bg = random.choice(REAL_BACKGROUNDS)
+        return f"change only background to {real_bg}"
+
+
 def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: str) -> dict:
     """
     random_face_change 워크플로우를 수정합니다.
@@ -148,6 +180,51 @@ def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: 
         node_id, node = clip_text_result
         random_prompt = generate_random_prompt(gender)
         node["inputs"]["text"] = random_prompt
+    
+    return modified_workflow
+
+
+def modify_workflow_random_background_change(workflow: dict, image_path: str) -> dict:
+    """
+    random_background_change 워크플로우를 수정합니다.
+    
+    수정 사항:
+    1. LoadImage 노드: 이미지 파일 경로 설정
+    2. SaveImageJpg 노드: filename_prefix를 입력 이미지 파일명(확장자 제외)으로 설정
+    3. CLIPTextEncode 노드: 랜덤 생성된 배경 프롬프트로 text 설정
+    
+    Args:
+        workflow: 원본 워크플로우 딕셔너리
+        image_path: 입력 이미지 경로
+        
+    Returns:
+        수정된 워크플로우 딕셔너리
+    """
+    # 워크플로우 복사본 생성
+    modified_workflow = json.loads(json.dumps(workflow))
+    
+    # 이미지 파일명 (확장자 제외)
+    image_filename = os.path.basename(image_path)
+    image_name_without_ext = os.path.splitext(image_filename)[0]
+    
+    # 1. LoadImage 노드 수정
+    load_image_result = find_node_by_class_type(modified_workflow, "LoadImage")
+    if load_image_result:
+        node_id, node = load_image_result
+        node["inputs"]["image"] = image_path
+    
+    # 2. SaveImageJpg 노드 수정
+    save_image_result = find_node_by_class_type(modified_workflow, "SaveImageJpg")
+    if save_image_result:
+        node_id, node = save_image_result
+        node["inputs"]["filename_prefix"] = image_name_without_ext
+    
+    # 3. CLIPTextEncode 노드 수정 (랜덤 배경 프롬프트)
+    clip_text_result = find_node_by_class_type(modified_workflow, "CLIPTextEncode")
+    if clip_text_result:
+        node_id, node = clip_text_result
+        background_prompt = generate_background_prompt()
+        node["inputs"]["text"] = background_prompt
     
     return modified_workflow
 
@@ -211,6 +288,8 @@ def modify_workflow_for_image(
     """
     if workflow_type == "random_face_change":
         return modify_workflow_random_face_change(workflow, image_path, gender)
+    elif workflow_type == "random_background_change":
+        return modify_workflow_random_background_change(workflow, image_path)
     else:
         # 알 수 없는 워크플로우 타입은 원본 그대로 반환
         return workflow
@@ -301,18 +380,17 @@ def main():
     )
     
     parser.add_argument(
-        '--workflow',
+        '--workflow_dir',
         type=str,
-        default='./scripts/comfyui_workflows/random_face_change.json',
-        dest='comfyui_workflow_json_path',
-        help='ComfyUI 워크플로우 JSON 파일 경로 (기본값: comfyui_workflows/random_face_change.json)'
+        default='./scripts/comfyui_workflows',
+        help='ComfyUI 워크플로우 디렉토리 경로 (기본값: ./scripts/comfyui_workflows)'
     )
     
     parser.add_argument(
         '--workflow_type',
         type=str,
         default='random_face_change',
-        choices=['random_face_change'],
+        choices=['random_face_change', 'random_background_change'],
         help='워크플로우 타입 (기본값: random_face_change)'
     )
     
@@ -364,15 +442,18 @@ def main():
         print(f"오류: 이미지 디렉토리를 찾을 수 없습니다: {args.image_dir}")
         return 1
     
-    if not os.path.isfile(args.comfyui_workflow_json_path):
-        print(f"오류: 워크플로우 파일을 찾을 수 없습니다: {args.comfyui_workflow_json_path}")
+    # 워크플로우 경로 조합
+    workflow_path = f"{args.workflow_dir}/{args.workflow_type}.json"
+    
+    if not os.path.isfile(workflow_path):
+        print(f"오류: 워크플로우 파일을 찾을 수 없습니다: {workflow_path}")
         return 1
     
     print("=" * 60)
     print("ComfyUI 대량 이미지 합성 요청")
     print("=" * 60)
     print(f"이미지 디렉토리: {args.image_dir}")
-    print(f"워크플로우 파일: {args.comfyui_workflow_json_path}")
+    print(f"워크플로우 파일: {workflow_path}")
     print(f"워크플로우 타입: {args.workflow_type}")
     print(f"성별: {args.gender}")
     print(f"ComfyUI 호스트: {', '.join(args.comfyui_hosts)}")
@@ -383,7 +464,7 @@ def main():
     # 배치 요청 실행
     results = batch_request_to_comfyui(
         image_dir=args.image_dir,
-        workflow_path=args.comfyui_workflow_json_path,
+        workflow_path=workflow_path,
         workflow_type=args.workflow_type,
         comfyui_hosts=args.comfyui_hosts,
         gender=args.gender,

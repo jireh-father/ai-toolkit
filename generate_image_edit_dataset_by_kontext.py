@@ -58,12 +58,18 @@ CLOTH_TOP_TYPES = [
     "crop top", "sweatshirt", "blazer"
 ]
 
+# 상의 긴팔, 반팔
+CLOTH_TOP_LENGTHS = [
+    "long sleeved", "short sleeved"
+]
+
 
 def generate_cloth_prompt():
     """옷 변경을 위한 동적 프롬프트 생성"""
     color = random.choice(CLOTH_COLORS)
     cloth_type = random.choice(CLOTH_TOP_TYPES)
-    return f"only change top to {color} {cloth_type}"
+    cloth_length = random.choice(CLOTH_TOP_LENGTHS)
+    return f"only change top to {cloth_length} {color} {cloth_type}"
 
 
 PREFERED_KONTEXT_RESOLUTIONS = [
