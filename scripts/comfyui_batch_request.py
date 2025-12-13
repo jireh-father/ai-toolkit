@@ -160,14 +160,17 @@ def get_image_files(image_dir: str) -> list[str]:
         image_dir: 이미지 파일들이 있는 디렉토리 경로
         
     Returns:
-        이미지 파일 경로 리스트 (정렬됨)
+        이미지 파일 절대 경로 리스트 (정렬됨)
     """
     image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.webp', '*.bmp']
     image_files = []
     
+    # 절대 경로로 변환
+    abs_image_dir = os.path.abspath(image_dir)
+    
     for ext in image_extensions:
-        image_files.extend(glob.glob(os.path.join(image_dir, ext)))
-        image_files.extend(glob.glob(os.path.join(image_dir, ext.upper())))
+        image_files.extend(glob.glob(os.path.join(abs_image_dir, ext)))
+        image_files.extend(glob.glob(os.path.join(abs_image_dir, ext.upper())))
     
     return sorted(set(image_files))
 
