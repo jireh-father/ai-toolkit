@@ -44,6 +44,28 @@ REAL_BACKGROUNDS = [
     "library", "cafe", "restaurant", "office", "studio", "rooftop"
 ]
 
+# 카메라 방향 리스트
+CAMERA_DIRECTIONS = ["left", "right"]
+
+# 옷 색상 리스트
+CLOTH_COLORS = [
+    "white", "black", "gray", "red", "blue", "green", "yellow", "orange",
+    "pink", "purple", "beige", "brown", "navy", "sky blue", "mint",
+    "ivory", "cream", "lavender", "coral", "teal"
+]
+
+# 상의 종류 리스트
+CLOTH_TOP_TYPES = [
+    "t-shirt", "shirt", "blouse", "sweater", "hoodie", "cardigan",
+    "jacket", "coat", "vest", "tank top", "polo shirt", "turtleneck",
+    "crop top", "sweatshirt", "blazer"
+]
+
+# 상의 긴팔, 반팔
+CLOTH_TOP_LENGTHS = [
+    "long sleeved", "short sleeved"
+]
+
 def queue_prompt(prompt_workflow, ip):
     p = {"prompt": prompt_workflow}
     data = json.dumps(p).encode('utf-8')
@@ -67,6 +89,22 @@ def find_node_by_class_type(workflow: dict, class_type: str) -> tuple[str, dict]
     """
     for node_id, node in workflow.items():
         if node.get("class_type") == class_type:
+            return node_id, node
+    return None
+
+def find_node_by_class_type_and_title(workflow: dict, class_type: str) -> tuple[str, dict] | None:
+    """
+    워크플로우에서 특정 class_type을 가진 노드를 찾습니다.
+    
+    Args:
+        workflow: 워크플로우 딕셔너리
+        class_type: 찾을 노드의 class_type
+        
+    Returns:
+        (노드 ID, 노드 딕셔너리) 튜플 또는 None
+    """
+    for node_id, node in workflow.items():
+        if node.get("class_type") == class_type and node.get("_meta").get("title") == class_type:
             return node_id, node
     return None
 
@@ -124,6 +162,30 @@ def generate_background_prompt() -> str:
     else:
         real_bg = random.choice(REAL_BACKGROUNDS)
         return f"change only background to {real_bg}"
+
+
+def generate_camera_angle_prompt() -> str:
+    """
+    카메라 각도 변경을 위한 동적 프롬프트를 생성합니다.
+    
+    Returns:
+        카메라 각도 변경 프롬프트 문자열
+    """
+    direction = random.choice(CAMERA_DIRECTIONS)
+    return f"move the camera 5 degrees to the {direction}"
+
+
+def generate_cloth_prompt() -> str:
+    """
+    옷 변경을 위한 동적 프롬프트를 생성합니다.
+    
+    Returns:
+        옷 변경 프롬프트 문자열
+    """
+    color = random.choice(CLOTH_COLORS)
+    cloth_type = random.choice(CLOTH_TOP_TYPES)
+    cloth_length = random.choice(CLOTH_TOP_LENGTHS)
+    return f"only change top to {cloth_length} {color} {cloth_type}"
 
 
 def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: str) -> dict:
@@ -229,6 +291,52 @@ def modify_workflow_random_background_change(workflow: dict, image_path: str) ->
     return modified_workflow
 
 
+def modify_workflow_with_prompt(workflow: dict, image_path: str, prompt: str) -> dict:
+    """
+    범용 워크플로우 수정 함수입니다.
+    이미지 경로와 프롬프트만 설정합니다.
+    
+    수정 사항:
+    1. LoadImage 노드: 이미지 파일 경로 설정
+    2. SaveImageJpg 노드: filename_prefix를 입력 이미지 파일명(확장자 제외)으로 설정
+    3. CLIPTextEncode 노드: 주어진 프롬프트로 text 설정
+    
+    Args:
+        workflow: 원본 워크플로우 딕셔너리
+        image_path: 입력 이미지 경로
+        prompt: 프롬프트 텍스트
+        
+    Returns:
+        수정된 워크플로우 딕셔너리
+    """
+    # 워크플로우 복사본 생성
+    modified_workflow = json.loads(json.dumps(workflow))
+    
+    # 이미지 파일명 (확장자 제외)
+    image_filename = os.path.basename(image_path)
+    image_name_without_ext = os.path.splitext(image_filename)[0]
+    
+    # 1. LoadImage 노드 수정
+    load_image_result = find_node_by_class_type(modified_workflow, "LoadImage")
+    if load_image_result:
+        node_id, node = load_image_result
+        node["inputs"]["image"] = image_path
+    
+    # 2. SaveImageJpg 노드 수정
+    save_image_result = find_node_by_class_type(modified_workflow, "SaveImageJpg")
+    if save_image_result:
+        node_id, node = save_image_result
+        node["inputs"]["filename_prefix"] = image_name_without_ext
+    
+    # 3. CLIPTextEncode 노드 수정
+    clip_text_result = find_node_by_class_type_and_title(modified_workflow, "TextEncodeQwenImageEditPlus")
+    if clip_text_result:
+        node_id, node = clip_text_result
+        node["inputs"]["text"] = prompt
+    
+    return modified_workflow
+
+
 def get_image_files(image_dir: str) -> list[str]:
     """
     이미지 디렉토리에서 이미지 파일 목록을 가져옵니다.
@@ -290,6 +398,10 @@ def modify_workflow_for_image(
         return modify_workflow_random_face_change(workflow, image_path, gender)
     elif workflow_type == "random_background_change":
         return modify_workflow_random_background_change(workflow, image_path)
+    elif workflow_type == "random_camera_angle_move":
+        return modify_workflow_with_prompt(workflow, image_path, generate_camera_angle_prompt())
+    elif workflow_type == "random_cloth_change":
+        return modify_workflow_with_prompt(workflow, image_path, generate_cloth_prompt())
     else:
         # 알 수 없는 워크플로우 타입은 원본 그대로 반환
         return workflow
@@ -302,6 +414,8 @@ def batch_request_to_comfyui(
     comfyui_hosts: list[str],
     gender: str,
     output_workflow_dir: str,
+    output_dir: str,
+    force_request: bool = False,
 ) -> dict[str, str]:
     """
     이미지 파일들을 라운드로빈 방식으로 ComfyUI 서버에 요청합니다.
@@ -312,7 +426,9 @@ def batch_request_to_comfyui(
         workflow_type: 워크플로우 타입
         comfyui_hosts: ComfyUI 서버 호스트 목록 (ip:port 형식)
         gender: 성별 (male 또는 female)
-        output_workflow_dir: ComfyUI 워크플로우 JSON 파일 저장 디렉토리        
+        output_workflow_dir: ComfyUI 워크플로우 JSON 파일 저장 디렉토리
+        output_dir: 출력 이미지 디렉토리 경로
+        force_request: True면 무조건 요청, False면 output_dir에 파일 존재시 스킵
     Returns:
         이미지 경로와 prompt_id 매핑 딕셔너리
     """
@@ -333,8 +449,20 @@ def batch_request_to_comfyui(
     
     # 결과 저장
     results = {}
+    skipped_count = 0
     
     for idx, image_path in enumerate(image_files):
+        # force_request가 False이면 output_dir에 파일 존재 여부 확인
+        if not force_request:
+            image_filename = os.path.basename(image_path)
+            image_name_without_ext = os.path.splitext(image_filename)[0]
+            # output_dir에서 동일한 파일명(확장자 무관)이 있는지 확인
+            existing_files = glob.glob(os.path.join(output_dir, f"{image_name_without_ext}.*"))
+            if existing_files:
+                skipped_count += 1
+                print(f"[{idx + 1}/{len(image_files)}] {image_filename} -> 스킵 (이미 존재: {os.path.basename(existing_files[0])})")
+                continue
+        
         # 현재 호스트 선택 (라운드로빈)
         current_host = next(host_cycle)
         
@@ -358,6 +486,9 @@ def batch_request_to_comfyui(
         except Exception as e:
             print(f"[{idx + 1}/{len(image_files)}] {os.path.basename(image_path)} -> {current_host} 요청 실패: {e}")
             results[image_path] = None
+    
+    if skipped_count > 0:
+        print(f"\n스킵된 이미지: {skipped_count}개")
     
     return results
 
@@ -390,7 +521,7 @@ def main():
         '--workflow_type',
         type=str,
         default='random_face_change',
-        choices=['random_face_change', 'random_background_change'],
+        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change'],
         help='워크플로우 타입 (기본값: random_face_change)'
     )
     
@@ -432,6 +563,20 @@ def main():
         help='ComfyUI 워크플로우 JSON 파일 저장 디렉토리'
     )
     
+    parser.add_argument(
+        '--output_dir',
+        type=str,
+        required=True,
+        help='출력 이미지 디렉토리 경로 (필수)'
+    )
+    
+    parser.add_argument(
+        '--force_request',
+        action='store_true',
+        default=False,
+        help='True면 무조건 요청, False면 output_dir에 파일 존재시 스킵 (기본값: False)'
+    )
+    
     args = parser.parse_args()
 
     if args.output_workflow_dir:
@@ -440,6 +585,11 @@ def main():
     # 입력 검증
     if not os.path.isdir(args.image_dir):
         print(f"오류: 이미지 디렉토리를 찾을 수 없습니다: {args.image_dir}")
+        return 1
+    
+    # output_dir 존재 검증
+    if not os.path.isdir(args.output_dir):
+        print(f"오류: 출력 디렉토리를 찾을 수 없습니다: {args.output_dir}")
         return 1
     
     # 워크플로우 경로 조합
@@ -456,6 +606,8 @@ def main():
     print(f"워크플로우 파일: {workflow_path}")
     print(f"워크플로우 타입: {args.workflow_type}")
     print(f"성별: {args.gender}")
+    print(f"출력 디렉토리: {args.output_dir}")
+    print(f"강제 요청: {args.force_request}")
     print(f"ComfyUI 호스트: {', '.join(args.comfyui_hosts)}")
     print("=" * 60)
 
@@ -468,7 +620,9 @@ def main():
         workflow_type=args.workflow_type,
         comfyui_hosts=args.comfyui_hosts,
         gender=args.gender,
-        output_workflow_dir=args.output_workflow_dir
+        output_workflow_dir=args.output_workflow_dir,
+        output_dir=args.output_dir,
+        force_request=args.force_request
     )
     
     # 결과 요약
