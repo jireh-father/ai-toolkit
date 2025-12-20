@@ -158,7 +158,7 @@ def generate_background_prompt() -> str:
     
     if prompt_type == "simple_color":
         color = random.choice(BACKGROUND_COLORS)
-        return f"change only background to {color} background"
+        return f"change only background to simple {color} background"
     else:
         real_bg = random.choice(REAL_BACKGROUNDS)
         return f"change only background to {real_bg}"
@@ -332,7 +332,7 @@ def modify_workflow_with_prompt(workflow: dict, image_path: str, prompt: str) ->
     clip_text_result = find_node_by_class_type_and_title(modified_workflow, "TextEncodeQwenImageEditPlus")
     if clip_text_result:
         node_id, node = clip_text_result
-        node["inputs"]["text"] = prompt
+        node["inputs"]["prompt"] = prompt
     
     return modified_workflow
 
