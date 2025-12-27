@@ -56,7 +56,7 @@ CLOTH_COLORS = [
 
 # 상의 종류 리스트
 CLOTH_TOP_TYPES = [
-    "t-shirt", "shirt", "blouse", "sweater", "hoodie", "cardigan",
+    "t-shirt", "shirt", "blouse", "sweater", "cardigan",
     "jacket", "coat", "vest", "tank top", "polo shirt", "turtleneck",
     "crop top", "sweatshirt", "blazer"
 ]
