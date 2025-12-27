@@ -24,7 +24,7 @@ config:
         # images will automatically be resized and bucketed into the resolution specified
         # on windows, escape back slashes with another backslash so
         # "C:\\path\\to\\images\\folder"
-        - folder_path: "./flux_kontext_prepare_dataset/kakao_female_output2"
+        - folder_path: "./flux_kontext_prepare_dataset/kakao_female_output2_qwen"
           # can do up to 3 control image folders, file names must match target file names, but aspect/size can be different
           control_path:
             - "./flux_kontext_prepare_dataset/kakao_female_input2"
