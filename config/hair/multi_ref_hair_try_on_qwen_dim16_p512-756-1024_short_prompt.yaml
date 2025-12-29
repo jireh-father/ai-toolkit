@@ -2,11 +2,11 @@
 job: extension
 config:
   # this name will be the folder and filename name
-  name: "multi_ref_hair_try_on_qwen_dim16_p512-756-1024"
+  name: "multi_ref_hair_try_on_qwen_dim16_p512-756-1024_short_prompt"
   process:
     - type: 'diffusion_trainer'
       # root folder to save training sessions/samples/weights
-      training_folder: "output_multi_ref_hair_try_on_qwen_dim16_p512-756-1024"
+      training_folder: "output_multi_ref_hair_try_on_qwen_dim16_p512-756-1024_short_prompt"
       # uncomment to see performance stats in the terminal every N steps
 #      performance_log_every: 1000
       device: cuda:0
@@ -24,7 +24,7 @@ config:
         # images will automatically be resized and bucketed into the resolution specified
         # on windows, escape back slashes with another backslash so
         # "C:\\path\\to\\images\\folder"
-        - folder_path: "./flux_kontext_prepare_dataset/kakao_female_output2_qwen"
+        - folder_path: "./flux_kontext_prepare_dataset/kakao_female_output2_qwen_short_prompt"
           # can do up to 3 control image folders, file names must match target file names, but aspect/size can be different
           control_path:
             - "./flux_kontext_prepare_dataset/kakao_female_input2"
@@ -38,7 +38,7 @@ config:
       train:
         batch_size: 1
         # caching text embeddings is required for 32GB
-        cache_text_embeddings: false
+        cache_text_embeddings: true
         # unload_text_encoder: true
         
         steps: 3000  # total number of steps to train 500 - 4000 is a good range
