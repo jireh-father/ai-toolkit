@@ -340,9 +340,10 @@ def modify_workflow_with_prompt(workflow: dict, image_path: str, prompt: str) ->
 def get_image_files(image_dir: str) -> list[str]:
     """
     이미지 디렉토리에서 이미지 파일 목록을 가져옵니다.
+    콤마로 구분된 여러 디렉토리를 지원합니다.
     
     Args:
-        image_dir: 이미지 파일들이 있는 디렉토리 경로
+        image_dir: 이미지 파일들이 있는 디렉토리 경로 (콤마로 구분 가능)
         
     Returns:
         이미지 파일 절대 경로 리스트 (정렬됨)
@@ -350,12 +351,16 @@ def get_image_files(image_dir: str) -> list[str]:
     image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.webp', '*.bmp']
     image_files = []
     
-    # 절대 경로로 변환
-    abs_image_dir = os.path.abspath(image_dir)
+    # 콤마로 구분된 여러 디렉토리 처리
+    dirs = [d.strip() for d in image_dir.split(',')]
     
-    for ext in image_extensions:
-        image_files.extend(glob.glob(os.path.join(abs_image_dir, ext)))
-        image_files.extend(glob.glob(os.path.join(abs_image_dir, ext.upper())))
+    for dir_path in dirs:
+        # 절대 경로로 변환
+        abs_image_dir = os.path.abspath(dir_path)
+        
+        for ext in image_extensions:
+            image_files.extend(glob.glob(os.path.join(abs_image_dir, ext)))
+            image_files.extend(glob.glob(os.path.join(abs_image_dir, ext.upper())))
     
     return sorted(set(image_files))
 
@@ -405,6 +410,143 @@ def modify_workflow_for_image(
     else:
         # 알 수 없는 워크플로우 타입은 원본 그대로 반환
         return workflow
+
+
+def modify_workflow_qwen_hairstyle_edit(workflow: dict, image_path1: str, image_path2: str, gen_index: int) -> dict:
+    """
+    qwen_hairstyle_edit 워크플로우를 수정합니다.
+    
+    수정 사항:
+    1. 노드 137(LoadImage): 이미지 1 파일 경로 설정
+    2. 노드 78(LoadImage): 이미지 2 파일 경로 설정
+    3. 노드 138(SaveImageJpg): filename_prefix 설정
+    
+    Args:
+        workflow: 원본 워크플로우 딕셔너리
+        image_path1: 입력 이미지 1 경로 (노드 137)
+        image_path2: 입력 이미지 2 경로 (노드 78)
+        gen_index: 생성 인덱스 (파일명에 사용)
+        
+    Returns:
+        수정된 워크플로우 딕셔너리
+    """
+    # 워크플로우 복사본 생성
+    modified_workflow = json.loads(json.dumps(workflow))
+    
+    # 이미지 파일명 (확장자 제외)
+    image1_filename = os.path.basename(image_path1)
+    image1_name_without_ext = os.path.splitext(image1_filename)[0]
+    image2_filename = os.path.basename(image_path2)
+    image2_name_without_ext = os.path.splitext(image2_filename)[0]
+    
+    # 1. 노드 137(LoadImage) 수정 - 이미지 1
+    if "137" in modified_workflow:
+        modified_workflow["137"]["inputs"]["image"] = image_path1
+    
+    # 2. 노드 78(LoadImage) 수정 - 이미지 2
+    if "78" in modified_workflow:
+        modified_workflow["78"]["inputs"]["image"] = image_path2
+    
+    # 3. 노드 138(SaveImageJpg) 수정 - filename_prefix 설정
+    if "138" in modified_workflow:
+        modified_workflow["138"]["inputs"]["filename_prefix"] = f"{image1_name_without_ext}_{image2_name_without_ext}_{gen_index:04d}"
+    
+    return modified_workflow
+
+
+def batch_request_qwen_hairstyle_edit(
+    image_dir: str,
+    workflow_path: str,
+    comfyui_hosts: list[str],
+    output_workflow_dir: str,
+    output_dir: str,
+    num_gens: int,
+    force_request: bool = False,
+) -> dict[str, str]:
+    """
+    qwen_hairstyle_edit 워크플로우를 위한 배치 요청 함수입니다.
+    num_gens만큼 랜덤으로 2개의 이미지를 선택하여 워크플로우를 생성합니다.
+    
+    Args:
+        image_dir: 이미지 파일들이 있는 디렉토리 경로 (콤마로 구분 가능)
+        workflow_path: ComfyUI 워크플로우 JSON 파일 경로
+        comfyui_hosts: ComfyUI 서버 호스트 목록 (ip:port 형식)
+        output_workflow_dir: ComfyUI 워크플로우 JSON 파일 저장 디렉토리
+        output_dir: 출력 이미지 디렉토리 경로
+        num_gens: 생성할 워크플로우 수
+        force_request: True면 무조건 요청, False면 output_dir에 파일 존재시 스킵
+        
+    Returns:
+        이미지 경로와 prompt_id 매핑 딕셔너리
+    """
+    # 이미지 파일 목록 가져오기
+    image_files = get_image_files(image_dir)
+    
+    if len(image_files) < 2:
+        print(f"경고: 최소 2개의 이미지 파일이 필요합니다. 현재: {len(image_files)}개")
+        return {}
+    
+    print(f"총 {len(image_files)}개의 이미지 파일을 발견했습니다.")
+    print(f"{num_gens}개의 워크플로우를 생성합니다.")
+    
+    # 워크플로우 로드
+    base_workflow = load_workflow(workflow_path)
+    
+    # 라운드로빈을 위한 호스트 순환자
+    host_cycle = cycle(comfyui_hosts)
+    
+    # 결과 저장
+    results = {}
+    skipped_count = 0
+    
+    for gen_idx in range(num_gens):
+        # 랜덤으로 2개의 이미지 선택
+        selected_images = random.sample(image_files, 2)
+        image_path1 = selected_images[0]
+        image_path2 = selected_images[1]
+        
+        # 파일명 생성을 위한 이름 추출
+        image1_name = os.path.splitext(os.path.basename(image_path1))[0]
+        image2_name = os.path.splitext(os.path.basename(image_path2))[0]
+        output_prefix = f"{image1_name}_{image2_name}_{gen_idx:04d}"
+        
+        # force_request가 False이면 output_dir에 파일 존재 여부 확인
+        if not force_request:
+            existing_files = glob.glob(os.path.join(output_dir, f"{output_prefix}.*"))
+            if existing_files:
+                skipped_count += 1
+                print(f"[{gen_idx + 1}/{num_gens}] {output_prefix} -> 스킵 (이미 존재: {os.path.basename(existing_files[0])})")
+                continue
+        
+        # 현재 호스트 선택 (라운드로빈)
+        current_host = next(host_cycle)
+        
+        # 워크플로우 수정
+        modified_workflow = modify_workflow_qwen_hairstyle_edit(
+            workflow=base_workflow,
+            image_path1=image_path1,
+            image_path2=image_path2,
+            gen_index=gen_idx
+        )
+        
+        if output_workflow_dir:
+            # 워크플로우 저장
+            workflow_filename = f"{output_prefix}.json"
+            json.dump(modified_workflow, open(os.path.join(output_workflow_dir, workflow_filename), 'w+'), indent=2, ensure_ascii=False)
+        
+        try:
+            # ComfyUI에 요청
+            prompt_id = queue_prompt(modified_workflow, current_host)
+            results[output_prefix] = prompt_id
+            print(f"[{gen_idx + 1}/{num_gens}] {output_prefix} -> {current_host} (prompt_id: {prompt_id})")
+        except Exception as e:
+            print(f"[{gen_idx + 1}/{num_gens}] {output_prefix} -> {current_host} 요청 실패: {e}")
+            results[output_prefix] = None
+    
+    if skipped_count > 0:
+        print(f"\n스킵된 워크플로우: {skipped_count}개")
+    
+    return results
 
 
 def batch_request_to_comfyui(
@@ -521,8 +663,15 @@ def main():
         '--workflow_type',
         type=str,
         default='random_face_change',
-        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change'],
+        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change', 'qwen_hairstyle_edit'],
         help='워크플로우 타입 (기본값: random_face_change)'
+    )
+    
+    parser.add_argument(
+        '--num_gens',
+        type=int,
+        default=100,
+        help='생성할 워크플로우 수 (qwen_hairstyle_edit 전용, 기본값: 100)'
     )
     
     parser.add_argument(
@@ -614,16 +763,27 @@ def main():
     random.seed(args.seed)
     
     # 배치 요청 실행
-    results = batch_request_to_comfyui(
-        image_dir=args.image_dir,
-        workflow_path=workflow_path,
-        workflow_type=args.workflow_type,
-        comfyui_hosts=args.comfyui_hosts,
-        gender=args.gender,
-        output_workflow_dir=args.output_workflow_dir,
-        output_dir=args.output_dir,
-        force_request=args.force_request
-    )
+    if args.workflow_type == "qwen_hairstyle_edit":
+        results = batch_request_qwen_hairstyle_edit(
+            image_dir=args.image_dir,
+            workflow_path=workflow_path,
+            comfyui_hosts=args.comfyui_hosts,
+            output_workflow_dir=args.output_workflow_dir,
+            output_dir=args.output_dir,
+            num_gens=args.num_gens,
+            force_request=args.force_request
+        )
+    else:
+        results = batch_request_to_comfyui(
+            image_dir=args.image_dir,
+            workflow_path=workflow_path,
+            workflow_type=args.workflow_type,
+            comfyui_hosts=args.comfyui_hosts,
+            gender=args.gender,
+            output_workflow_dir=args.output_workflow_dir,
+            output_dir=args.output_dir,
+            force_request=args.force_request
+        )
     
     # 결과 요약
     success_count = sum(1 for v in results.values() if v is not None)

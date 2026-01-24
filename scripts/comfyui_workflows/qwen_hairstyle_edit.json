@@ -1,0 +1,225 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 772738881809997,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "75",
+        0
+      ],
+      "positive": [
+        "126",
+        0
+      ],
+      "negative": [
+        "125",
+        0
+      ],
+      "latent_image": [
+        "88",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE 디코드"
+    }
+  },
+  "39": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAE 로드"
+    }
+  },
+  "66": {
+    "inputs": {
+      "shift": 3.1,
+      "model": [
+        "134",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "모델 샘플링 (AuraFlow)"
+    }
+  },
+  "75": {
+    "inputs": {
+      "strength": 1,
+      "model": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "CFGNorm",
+    "_meta": {
+      "title": "CFGNorm"
+    }
+  },
+  "78": {
+    "inputs": {
+      "image": "KakaoTalk_20251228_180404451 - 복사본.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "이미지 로드"
+    }
+  },
+  "88": {
+    "inputs": {
+      "pixels": [
+        "130",
+        0
+      ],
+      "vae": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE 인코드"
+    }
+  },
+  "106": {
+    "inputs": {
+      "image": "KakaoTalk_20251229_093952068.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "이미지 로드"
+    }
+  },
+  "125": {
+    "inputs": {
+      "conditioning": [
+        "126",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "조건 (0으로 출력)"
+    }
+  },
+  "126": {
+    "inputs": {
+      "cache_filename": "conditioning_b84f2460fb78dd98b884534deb262162.pkl",
+      "vae": [
+        "39",
+        0
+      ],
+      "image1": [
+        "130",
+        0
+      ],
+      "image2": [
+        "131",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlusCache",
+    "_meta": {
+      "title": "TextEncodeQwenImageEditPlusCache"
+    }
+  },
+  "130": {
+    "inputs": {
+      "image": [
+        "78",
+        0
+      ]
+    },
+    "class_type": "FluxKontextImageScale",
+    "_meta": {
+      "title": "Flux Kontext 이미지 스케일"
+    }
+  },
+  "131": {
+    "inputs": {
+      "image": [
+        "106",
+        0
+      ]
+    },
+    "class_type": "FluxKontextImageScale",
+    "_meta": {
+      "title": "Flux Kontext 이미지 스케일"
+    }
+  },
+  "132": {
+    "inputs": {
+      "unet_name": "Qwen-Image-Edit-2511-FP8_e4m3fn.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "확산 모델 로드"
+    }
+  },
+  "133": {
+    "inputs": {
+      "lora_name": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "strength_model": 1,
+      "model": [
+        "132",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA 로드 (모델 전용)"
+    }
+  },
+  "134": {
+    "inputs": {
+      "lora_name": "multi_ref_hair_try_on_qwen_dim32_p512-756-1024_32k_step.safetensors",
+      "strength_model": 1,
+      "model": [
+        "133",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA 로드 (모델 전용)"
+    }
+  },
+  "138": {
+    "inputs": {
+      "filename_prefix": "hahahaha",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImageJpg",
+    "_meta": {
+      "title": "SaveImageJpg"
+    }
+  }
+}
