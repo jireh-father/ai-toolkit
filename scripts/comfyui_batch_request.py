@@ -741,10 +741,11 @@ def main():
     if args.output_workflow_dir:
         os.makedirs(args.output_workflow_dir, exist_ok=True)
     
-    # 입력 검증
-    if not os.path.isdir(args.image_dir):
-        print(f"오류: 이미지 디렉토리를 찾을 수 없습니다: {args.image_dir}")
-        return 1
+    # 입력 검증 (콤마로 구분된 디렉토리 각각 체크)
+    for dir_path in [d.strip() for d in args.image_dir.split(',')]:
+        if not os.path.isdir(dir_path):
+            print(f"오류: 이미지 디렉토리를 찾을 수 없습니다: {dir_path}")
+            return 1
     
     # output_dir 존재 검증
     if not os.path.isdir(args.output_dir):
