@@ -221,5 +221,31 @@
     "_meta": {
       "title": "SaveImageJpg"
     }
+  },
+  "139": {
+    "inputs": {
+      "filename_prefix": "input_image_save",
+      "images": [
+        "130",
+        0
+      ]
+    },
+    "class_type": "SaveImageJpg",
+    "_meta": {
+      "title": "SaveImageJpg"
+    }
+  },
+  "140": {
+    "inputs": {
+      "filename_prefix": "reference_image_save",
+      "images": [
+        "131",
+        0
+      ]
+    },
+    "class_type": "SaveImageJpg",
+    "_meta": {
+      "title": "SaveImageJpg"
+    }
   }
 }

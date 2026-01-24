@@ -12,6 +12,7 @@ import os
 import glob
 import random
 from itertools import cycle
+import shutil
 from PIL import Image
 from urllib import request
 
@@ -439,17 +440,26 @@ def modify_workflow_qwen_hairstyle_edit(workflow: dict, image_path1: str, image_
     image2_filename = os.path.basename(image_path2)
     image2_name_without_ext = os.path.splitext(image2_filename)[0]
     
-    # 1. 노드 137(LoadImage) 수정 - 이미지 1
-    if "137" in modified_workflow:
-        modified_workflow["137"]["inputs"]["image"] = image_path1
-    
-    # 2. 노드 78(LoadImage) 수정 - 이미지 2
+    # 1. 노드 78(LoadImage) 수정 - 이미지 1
     if "78" in modified_workflow:
-        modified_workflow["78"]["inputs"]["image"] = image_path2
+        modified_workflow["78"]["inputs"]["image"] = image_path1
+    
+    # 2. 노드 106(LoadImage) 수정 - 이미지 2
+    if "106" in modified_workflow:
+        modified_workflow["106"]["inputs"]["image"] = image_path2
     
     # 3. 노드 138(SaveImageJpg) 수정 - filename_prefix 설정
+    output_prefix = f"{image1_name_without_ext}_{image2_name_without_ext}_{gen_index:04d}"
     if "138" in modified_workflow:
-        modified_workflow["138"]["inputs"]["filename_prefix"] = f"{image1_name_without_ext}_{image2_name_without_ext}_{gen_index:04d}"
+        modified_workflow["138"]["inputs"]["filename_prefix"] = output_prefix
+    
+    # 4. 노드 139(SaveImageJpg) 수정 - input_image/ prefix 추가
+    if "139" in modified_workflow:
+        modified_workflow["139"]["inputs"]["filename_prefix"] = f"input_image/{output_prefix}"
+    
+    # 5. 노드 140(SaveImageJpg) 수정 - reference_image/ prefix 추가
+    if "140" in modified_workflow:
+        modified_workflow["140"]["inputs"]["filename_prefix"] = f"reference_image/{output_prefix}"
     
     return modified_workflow
 
