@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Labeling Tool</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="setup-panel" class="setup-panel">
+        <h2>Image Labeling Setup</h2>
+
+        <div class="label-file-section">
+            <div class="input-group">
+                <label for="labelFile">Label File (optional):</label>
+                <div class="file-input-row">
+                    <input type="text" id="labelFile" placeholder="Enter label JSON file path to load existing data">
+                    <button type="button" class="browse-btn" data-target="labelFile" data-mode="file">Browse</button>
+                    <button id="load-label-btn" class="load-btn">Load</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="divider">OR Create New</div>
+
+        <div class="folder-inputs">
+            <div class="input-group">
+                <label for="folder1">Input Path:</label>
+                <div class="file-input-row">
+                    <input type="text" id="folder1" placeholder="Enter input folder path">
+                    <button type="button" class="browse-btn" data-target="folder1" data-mode="folder">Browse</button>
+                </div>
+            </div>
+            <div class="input-group">
+                <label for="folder2">Output Path:</label>
+                <div class="file-input-row">
+                    <input type="text" id="folder2" placeholder="Enter output folder path">
+                    <button type="button" class="browse-btn" data-target="folder2" data-mode="folder">Browse</button>
+                </div>
+            </div>
+            <div class="input-group">
+                <label for="folder3">Reference Path:</label>
+                <div class="file-input-row">
+                    <input type="text" id="folder3" placeholder="Enter reference folder path">
+                    <button type="button" class="browse-btn" data-target="folder3" data-mode="folder">Browse</button>
+                </div>
+            </div>
+        </div>
+        <div class="status-info">
+            <span id="json-filename">-</span>
+            <span id="item-count">0 items</span>
+        </div>
+        <button id="start-btn" class="start-btn">Start</button>
+    </div>
+
+    <div id="image-container" class="image-container hidden">
+        <div id="header-bar" class="header-bar">
+            <button id="back-btn" class="back-btn">Back to Setup</button>
+            <div class="header-filters">
+                <label class="filter-checkbox">
+                    <input type="checkbox" id="hide-deleted">
+                    <span>Hide Deleted</span>
+                </label>
+                <label class="filter-checkbox">
+                    <input type="checkbox" id="hide-approved">
+                    <span>Hide Approved</span>
+                </label>
+            </div>
+            <span id="header-info">-</span>
+            <span id="status-count">Approved: 0 | Deleted: 0</span>
+            <button id="apply-btn" class="apply-btn">Apply</button>
+        </div>
+        <div id="image-grid" class="image-grid">
+            <!-- Image rows will be dynamically inserted here -->
+        </div>
+        <div id="loading-indicator" class="loading-indicator hidden">Loading...</div>
+    </div>
+
+    <!-- Image Popup Modal -->
+    <div id="image-popup" class="image-popup hidden">
+        <div class="popup-overlay"></div>
+        <div class="popup-content">
+            <div class="popup-header">
+                <span id="popup-title">Image</span>
+                <span id="popup-zoom-level">100%</span>
+                <button id="popup-close" class="popup-close">&times;</button>
+            </div>
+            <div class="popup-image-container">
+                <img id="popup-image" src="" alt="Preview">
+                <img id="popup-image2" src="" alt="Preview 2" class="hidden">
+            </div>
+            <div class="popup-footer">
+                <button id="popup-toggle-btn" class="popup-toggle-btn hidden">Show Output</button>
+                <span class="popup-shortcuts">Click: Zoom In | Alt+Click: Zoom Out | ESC: Close</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Apply Modal -->
+    <div id="apply-modal" class="modal hidden">
+        <div class="modal-content apply-modal-content">
+            <div class="modal-header">
+                <h3>Apply Approved Files</h3>
+                <button id="apply-modal-close" class="modal-close">&times;</button>
+            </div>
+            <div class="apply-modal-body">
+                <div class="input-group">
+                    <label>Target Path:</label>
+                    <div class="file-input-row">
+                        <input type="text" id="apply-target-path" placeholder="Select target folder">
+                        <button type="button" id="apply-browse-btn" class="browse-btn">Browse</button>
+                    </div>
+                </div>
+                <div class="apply-info">
+                    <p>This will copy approved files to:</p>
+                    <ul id="apply-target-folders"></ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span id="apply-status"></span>
+                <div class="modal-buttons">
+                    <button id="apply-cancel" class="modal-btn">Cancel</button>
+                    <button id="apply-confirm" class="modal-btn modal-btn-primary">Apply</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div id="browser-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Browse</h3>
+                <button id="modal-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-path-bar">
+                <button id="modal-up-btn" class="modal-up-btn">↑ Up</button>
+                <input type="text" id="modal-path-input" class="modal-path-input" placeholder="Enter path...">
+                <button id="modal-go-btn" class="modal-go-btn">Go</button>
+            </div>
+            <div id="modal-file-list" class="modal-file-list">
+                <!-- File list will be populated here -->
+            </div>
+            <div class="modal-footer">
+                <span id="modal-selected">No selection</span>
+                <div class="modal-buttons">
+                    <button id="modal-cancel" class="modal-btn">Cancel</button>
+                    <button id="modal-select" class="modal-btn modal-btn-primary">Select</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
