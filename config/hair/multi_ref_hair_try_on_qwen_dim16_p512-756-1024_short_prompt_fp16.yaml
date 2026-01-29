@@ -13,7 +13,7 @@ config:
       network:
         type: "lora"
         linear: 16
-        linear_alpha: 16
+        linear_alpha: 8
       save:
         dtype: float16 # precision to save
         save_every: 250 # save every this many steps
