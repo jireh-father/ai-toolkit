@@ -55,6 +55,7 @@ config:
         # uncomment to completely disable sampling
         # disable_sampling: true
         dtype: fp16
+        grad_clip_norm: 1.0
       model:
         # huggingface model name or path
         name_or_path: "Qwen/Qwen-Image-Edit-2511"
