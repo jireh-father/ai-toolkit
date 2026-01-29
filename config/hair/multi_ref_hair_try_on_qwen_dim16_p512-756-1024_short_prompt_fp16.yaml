@@ -47,15 +47,14 @@ config:
         train_unet: true
         train_text_encoder: false  # probably won't work with qwen image
         gradient_checkpointing: true  # need the on unless you have a ton of vram
-        noise_scheduler: "ddpm" # for training only
+        noise_scheduler: "flowmatch" # for training only
         optimizer: "adamw8bit"
-        lr: 1e-4
+        lr: 2e-5
         # uncomment this to skip the pre training sample
         # skip_first_sample: true
         # uncomment to completely disable sampling
         # disable_sampling: true
         dtype: fp16
-        grad_clip_norm: 1.0
       model:
         # huggingface model name or path
         name_or_path: "Qwen/Qwen-Image-Edit-2511"
