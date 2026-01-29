@@ -12,8 +12,8 @@ config:
       device: cuda:0
       network:
         type: "lora"
-        linear: 16
-        linear_alpha: 8
+        linear: 4
+        linear_alpha: 4
       save:
         dtype: float16 # precision to save
         save_every: 250 # save every this many steps
