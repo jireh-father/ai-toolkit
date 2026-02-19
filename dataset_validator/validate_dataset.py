@@ -65,6 +65,10 @@ Examples:
   python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
       --max-samples 5 --log-level debug
 
+  # Low-VRAM mode (V100 32GB with large models)
+  python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
+      --model qwen3-vl-30b-a3b --low-vram --max-pixels 200704 --resize-short-side 384
+
   # Multi-GPU with custom thresholds
   python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
       --num-gpus 2 --threshold-hair 8 --threshold-naturalness 6
@@ -102,6 +106,25 @@ Examples:
     parser.add_argument(
         "--batch-size", type=int, default=4,
         help="Batch size per GPU (default: 4)",
+    )
+    parser.add_argument(
+        "--max-pixels", type=int, default=None,
+        help="Max pixels per image for Qwen VL processor "
+             "(default: 401408 = 512*28*28, original: 1003520 = 1280*28*28). "
+             "Lower = less VRAM but coarser image detail.",
+    )
+    parser.add_argument(
+        "--min-pixels", type=int, default=None,
+        help="Min pixels per image for Qwen VL processor "
+             "(default: 50176 = 64*28*28)",
+    )
+    parser.add_argument(
+        "--max-new-tokens", type=int, default=384,
+        help="Max tokens to generate per evaluation (default: 384)",
+    )
+    parser.add_argument(
+        "--low-vram", action="store_true",
+        help="Enable low-VRAM mode: uses CPU offloading via device_map='auto'",
     )
 
     # Threshold settings
@@ -258,6 +281,10 @@ def main():
             max_retries=3,
             checkpoint_manager=ckpt,
             checkpoint_interval=args.checkpoint_interval,
+            max_pixels=args.max_pixels,
+            min_pixels=args.min_pixels,
+            max_new_tokens=args.max_new_tokens,
+            low_vram=args.low_vram,
         )
 
         elapsed = time.time() - start_time

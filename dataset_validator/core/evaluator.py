@@ -102,29 +102,58 @@ def load_vlm(
     model_name: str,
     quantization: str = "int4",
     device: str = "cuda:0",
+    max_pixels: Optional[int] = None,
+    min_pixels: Optional[int] = None,
+    low_vram: bool = False,
 ) -> dict:
     """Load VLM model and processor.
+
+    Args:
+        model_name: model key from models.yaml
+        quantization: "int4", "int8", or "fp16"
+        device: target device (e.g. "cuda:0")
+        max_pixels: max pixels per image for Qwen VL processor
+                    (default: 401408 = 512*28*28, original default was 1003520)
+        min_pixels: min pixels per image for Qwen VL processor
+                    (default: 50176 = 64*28*28)
+        low_vram: if True, use device_map="auto" for CPU offloading
 
     Returns dict with keys: model, processor, family, device
     """
     import torch
     from transformers import AutoProcessor, AutoModelForCausalLM
 
+    if max_pixels is None:
+        max_pixels = 512 * 28 * 28  # 401,408 (vs default 1,003,520)
+    if min_pixels is None:
+        min_pixels = 64 * 28 * 28   # 50,176
+
     model_config = load_model_config(model_name)
     hf_id = model_config["hf_id"]
     family = model_config["family"]
 
     logger.info(f"Loading model: {hf_id} (family={family}, quant={quantization})")
+    if low_vram:
+        logger.info("Low-VRAM mode: enabling CPU offloading with device_map='auto'")
 
     quant_config = _get_quantization_config(quantization)
 
+    # Device mapping: use "auto" for CPU offloading in low-VRAM mode
+    if low_vram:
+        device_map = "auto"
+    else:
+        device_map = device
+
     load_kwargs = {
         "trust_remote_code": True,
-        "dtype": torch.float16,
-        "device_map": device,
+        "torch_dtype": torch.float16,
+        "device_map": device_map,
     }
     if quant_config is not None:
         load_kwargs["quantization_config"] = quant_config
+
+    # Use memory-efficient attention (sdpa works on V100+, flash_attention_2 needs Ampere+)
+    load_kwargs["attn_implementation"] = "sdpa"
 
     # Family-specific model class selection
     if family == "qwen2_vl":
@@ -132,7 +161,17 @@ def load_vlm(
         model = AutoModelForVision2Seq.from_pretrained(
             hf_id, **load_kwargs
         )
-        processor = AutoProcessor.from_pretrained(hf_id, trust_remote_code=True)
+        # Set min/max_pixels to control visual token count per image
+        processor = AutoProcessor.from_pretrained(
+            hf_id,
+            trust_remote_code=True,
+            min_pixels=min_pixels,
+            max_pixels=max_pixels,
+        )
+        logger.info(
+            f"Qwen VL processor: min_pixels={min_pixels}, max_pixels={max_pixels} "
+            f"(max visual tokens/image={max_pixels // (28 * 28)})"
+        )
     elif family == "internvl":
         model = AutoModelForCausalLM.from_pretrained(hf_id, **load_kwargs)
         processor = AutoProcessor.from_pretrained(hf_id, trust_remote_code=True)
@@ -148,7 +187,11 @@ def load_vlm(
 
     model.eval()
 
-    logger.info(f"Model loaded on {device}")
+    # Log VRAM usage after model load
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**3
+        reserved = torch.cuda.memory_reserved() / 1024**3
+        logger.info(f"Model loaded — VRAM allocated: {allocated:.1f}GB, reserved: {reserved:.1f}GB")
 
     return {
         "model": model,
@@ -282,6 +325,7 @@ def evaluate_single(
     vlm: dict,
     images: tuple[Image.Image, Image.Image, Image.Image],
     max_retries: int = 3,
+    max_new_tokens: int = 384,
 ) -> Optional[dict]:
     """Evaluate a single image triplet using the VLM.
 
@@ -289,6 +333,7 @@ def evaluate_single(
         vlm: dict from load_vlm()
         images: (input_img, reference_img, output_img)
         max_retries: maximum attempts on JSON parse failure
+        max_new_tokens: max tokens to generate (default: 384, was 512)
 
     Returns:
         dict with score fields and reason, or None on complete failure
@@ -302,6 +347,8 @@ def evaluate_single(
     import torch
 
     for attempt in range(max_retries):
+        inputs = None
+        generated_ids = None
         try:
             if family == "qwen2_vl":
                 messages = _build_messages_qwen(images, user_prompt)
@@ -331,7 +378,7 @@ def evaluate_single(
             with torch.no_grad():
                 generated_ids = model.generate(
                     **inputs,
-                    max_new_tokens=512,
+                    max_new_tokens=max_new_tokens,
                     do_sample=False,
                     temperature=None,
                     top_p=None,
@@ -365,6 +412,11 @@ def evaluate_single(
         except Exception as e:
             logger.error(f"Evaluation error (attempt {attempt + 1}/{max_retries}): {e}")
             continue
+        finally:
+            # Free GPU memory after each attempt
+            del inputs, generated_ids
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     logger.error("All evaluation attempts failed")
     return None
@@ -375,6 +427,7 @@ def evaluate_batch(
     entries: list[dict],
     short_side: int = 512,
     max_retries: int = 3,
+    max_new_tokens: int = 384,
 ) -> list[dict]:
     """Evaluate a batch of entries sequentially.
 
@@ -383,6 +436,7 @@ def evaluate_batch(
         entries: list of dicts with 'stem', 'input', 'reference', 'output' keys
         short_side: target short side for image resizing
         max_retries: max retries per evaluation
+        max_new_tokens: max tokens to generate per evaluation
 
     Returns:
         list of result dicts with 'filename', 'scores', 'reason', 'error' keys
@@ -401,7 +455,7 @@ def evaluate_batch(
             })
             continue
 
-        scores = evaluate_single(vlm, triplet, max_retries=max_retries)
+        scores = evaluate_single(vlm, triplet, max_retries=max_retries, max_new_tokens=max_new_tokens)
         if scores is None:
             results.append({
                 "filename": entry["stem"],

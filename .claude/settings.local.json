@@ -22,7 +22,9 @@
       "Bash(.venvScriptspython.exe dataset_validatorseparate_failed.py --report test_reportsresults.json --input-dir E:backupaihub2025_gpuoutputinput_image --reference-dir E:backupaihub2025_gpuoutputreference_image --output-dir E:backupaihub2025_gpuoutput --failed-dir E:backupaihub2025_gpuoutput_failed --passed-dir E:backupaihub2025_gpuoutput_success)",
       "Bash(powershell -Command:*)",
       "Bash(python -c:*)",
-      "Bash(python dataset_validator/separate_face_failed.py:*)"
+      "Bash(python dataset_validator/separate_face_failed.py:*)",
+      "Bash(xargs:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }
