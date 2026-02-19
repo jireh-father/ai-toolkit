@@ -102,8 +102,6 @@ def load_vlm(
     model_name: str,
     quantization: str = "int4",
     device: str = "cuda:0",
-    max_pixels: Optional[int] = None,
-    min_pixels: Optional[int] = None,
     low_vram: bool = False,
 ) -> dict:
     """Load VLM model and processor.
@@ -112,21 +110,12 @@ def load_vlm(
         model_name: model key from models.yaml
         quantization: "int4", "int8", or "fp16"
         device: target device (e.g. "cuda:0")
-        max_pixels: max pixels per image for Qwen VL processor
-                    (default: 401408 = 512*28*28, original default was 1003520)
-        min_pixels: min pixels per image for Qwen VL processor
-                    (default: 50176 = 64*28*28)
         low_vram: if True, use device_map="auto" for CPU offloading
 
     Returns dict with keys: model, processor, family, device
     """
     import torch
     from transformers import AutoProcessor, AutoModelForCausalLM
-
-    if max_pixels is None:
-        max_pixels = 512 * 28 * 28  # 401,408 (vs default 1,003,520)
-    if min_pixels is None:
-        min_pixels = 64 * 28 * 28   # 50,176
 
     model_config = load_model_config(model_name)
     hf_id = model_config["hf_id"]
@@ -161,17 +150,7 @@ def load_vlm(
         model = AutoModelForVision2Seq.from_pretrained(
             hf_id, **load_kwargs
         )
-        # Set min/max_pixels to control visual token count per image
-        processor = AutoProcessor.from_pretrained(
-            hf_id,
-            trust_remote_code=True,
-            min_pixels=min_pixels,
-            max_pixels=max_pixels,
-        )
-        logger.info(
-            f"Qwen VL processor: min_pixels={min_pixels}, max_pixels={max_pixels} "
-            f"(max visual tokens/image={max_pixels // (28 * 28)})"
-        )
+        processor = AutoProcessor.from_pretrained(hf_id, trust_remote_code=True)
     elif family == "internvl":
         model = AutoModelForCausalLM.from_pretrained(hf_id, **load_kwargs)
         processor = AutoProcessor.from_pretrained(hf_id, trust_remote_code=True)
@@ -325,7 +304,6 @@ def evaluate_single(
     vlm: dict,
     images: tuple[Image.Image, Image.Image, Image.Image],
     max_retries: int = 3,
-    max_new_tokens: int = 384,
 ) -> Optional[dict]:
     """Evaluate a single image triplet using the VLM.
 
@@ -333,7 +311,6 @@ def evaluate_single(
         vlm: dict from load_vlm()
         images: (input_img, reference_img, output_img)
         max_retries: maximum attempts on JSON parse failure
-        max_new_tokens: max tokens to generate (default: 384, was 512)
 
     Returns:
         dict with score fields and reason, or None on complete failure
@@ -378,7 +355,7 @@ def evaluate_single(
             with torch.no_grad():
                 generated_ids = model.generate(
                     **inputs,
-                    max_new_tokens=max_new_tokens,
+                    max_new_tokens=512,
                     do_sample=False,
                     temperature=None,
                     top_p=None,
@@ -427,7 +404,6 @@ def evaluate_batch(
     entries: list[dict],
     short_side: int = 512,
     max_retries: int = 3,
-    max_new_tokens: int = 384,
 ) -> list[dict]:
     """Evaluate a batch of entries sequentially.
 
@@ -436,7 +412,6 @@ def evaluate_batch(
         entries: list of dicts with 'stem', 'input', 'reference', 'output' keys
         short_side: target short side for image resizing
         max_retries: max retries per evaluation
-        max_new_tokens: max tokens to generate per evaluation
 
     Returns:
         list of result dicts with 'filename', 'scores', 'reason', 'error' keys
@@ -455,7 +430,7 @@ def evaluate_batch(
             })
             continue
 
-        scores = evaluate_single(vlm, triplet, max_retries=max_retries, max_new_tokens=max_new_tokens)
+        scores = evaluate_single(vlm, triplet, max_retries=max_retries)
         if scores is None:
             results.append({
                 "filename": entry["stem"],

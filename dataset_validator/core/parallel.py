@@ -18,9 +18,6 @@ def _gpu_worker(
     max_retries: int,
     result_queue: mp.Queue,
     progress_queue: mp.Queue,
-    max_pixels: int = None,
-    min_pixels: int = None,
-    max_new_tokens: int = 384,
     low_vram: bool = False,
 ):
     """Worker process for a single GPU.
@@ -37,7 +34,7 @@ def _gpu_worker(
     try:
         vlm = load_vlm(
             model_name, quantization=quantization, device=device,
-            max_pixels=max_pixels, min_pixels=min_pixels, low_vram=low_vram,
+            low_vram=low_vram,
         )
     except Exception as e:
         logger.error(f"[GPU {gpu_id}] Failed to load model: {e}")
@@ -63,7 +60,7 @@ def _gpu_worker(
                 "error": True,
             })
         else:
-            scores = evaluate_single(vlm, triplet, max_retries=max_retries, max_new_tokens=max_new_tokens)
+            scores = evaluate_single(vlm, triplet, max_retries=max_retries)
             if scores is None:
                 result_queue.put({
                     "filename": entry["stem"],
@@ -104,9 +101,6 @@ def run_parallel_evaluation(
     max_retries: int = 3,
     checkpoint_manager=None,
     checkpoint_interval: int = 100,
-    max_pixels: int = None,
-    min_pixels: int = None,
-    max_new_tokens: int = 384,
     low_vram: bool = False,
 ) -> list[dict]:
     """Run evaluation across multiple GPUs.
@@ -118,15 +112,13 @@ def run_parallel_evaluation(
         return _run_single_gpu(
             entries, model_name, quantization, short_side,
             max_retries, checkpoint_manager, checkpoint_interval,
-            max_pixels=max_pixels, min_pixels=min_pixels,
-            max_new_tokens=max_new_tokens, low_vram=low_vram,
+            low_vram=low_vram,
         )
 
     return _run_multi_gpu(
         entries, model_name, quantization, num_gpus,
         short_side, max_retries, checkpoint_manager, checkpoint_interval,
-        max_pixels=max_pixels, min_pixels=min_pixels,
-        max_new_tokens=max_new_tokens, low_vram=low_vram,
+        low_vram=low_vram,
     )
 
 
@@ -138,9 +130,6 @@ def _run_single_gpu(
     max_retries: int,
     checkpoint_manager,
     checkpoint_interval: int,
-    max_pixels: int = None,
-    min_pixels: int = None,
-    max_new_tokens: int = 384,
     low_vram: bool = False,
 ) -> list[dict]:
     """Run evaluation on a single GPU (no multiprocessing)."""
@@ -149,7 +138,7 @@ def _run_single_gpu(
 
     vlm = load_vlm(
         model_name, quantization=quantization, device="cuda:0",
-        max_pixels=max_pixels, min_pixels=min_pixels, low_vram=low_vram,
+        low_vram=low_vram,
     )
 
     results = []
@@ -165,7 +154,7 @@ def _run_single_gpu(
                 "error": True,
             }
         else:
-            scores = evaluate_single(vlm, triplet, max_retries=max_retries, max_new_tokens=max_new_tokens)
+            scores = evaluate_single(vlm, triplet, max_retries=max_retries)
             if scores is None:
                 result = {
                     "filename": entry["stem"],
@@ -208,9 +197,6 @@ def _run_multi_gpu(
     max_retries: int,
     checkpoint_manager,
     checkpoint_interval: int,
-    max_pixels: int = None,
-    min_pixels: int = None,
-    max_new_tokens: int = 384,
     low_vram: bool = False,
 ) -> list[dict]:
     """Run evaluation across multiple GPUs using multiprocessing."""
@@ -237,9 +223,6 @@ def _run_multi_gpu(
                 progress_queue,
             ),
             kwargs={
-                "max_pixels": max_pixels,
-                "min_pixels": min_pixels,
-                "max_new_tokens": max_new_tokens,
                 "low_vram": low_vram,
             },
         )
