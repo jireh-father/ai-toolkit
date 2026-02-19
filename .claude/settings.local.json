@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(if not exist \"D:\\\\source\\\\ai-toolkit\\\\.claude\\\\docs\" mkdir \"D:\\\\source\\\\ai-toolkit\\\\.claude\\\\docs\")",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(cd:*)",
+      "Bash(find:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(.venv/Scripts/pip.exe install:*)",
+      "Bash(start \"\" \"D:\\\\source\\\\ai-toolkit\\\\test_reports\\\\summary.html\")",
+      "Bash(.venv\\\\Scripts\\\\python.exe:*)",
+      "Bash(D:/source/ai-toolkit/.venv/Scripts/python.exe:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(.venv\\\\Scripts\\\\pip.exe install:*)",
+      "Bash(python:*)",
+      "Bash(D:/source/ai-toolkit/.venv/Scripts/pip.exe install:*)",
+      "Bash(D:\\\\source\\\\ai-toolkit\\\\.venv\\\\Scripts\\\\python.exe:*)",
+      "Bash(cmd /c:*)",
+      "Bash(.venvScriptspython.exe dataset_validatorseparate_failed.py --report test_reportsresults.json --input-dir E:backupaihub2025_gpuoutputinput_image --reference-dir E:backupaihub2025_gpuoutputreference_image --output-dir E:backupaihub2025_gpuoutput --failed-dir E:backupaihub2025_gpuoutput_failed --passed-dir E:backupaihub2025_gpuoutput_success)",
+      "Bash(powershell -Command:*)",
+      "Bash(python -c:*)",
+      "Bash(python dataset_validator/separate_face_failed.py:*)"
+    ]
+  }
+}

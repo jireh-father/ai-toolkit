@@ -1,0 +1,51 @@
+filename,pass,mae,mse,mask_iou,mask_area_ratio,intersection_pixels,skipped,reason
+006923130d5e346d52e2c19c8a70550beebed7f6_7eba9428-d912-4225-8395-98f417420e57_source_7178.jpg,False,14.49,695.23,0.8419,0.8717,95788,False,MAE 14.5 exceeds threshold 10.0
+0070081d-ec2c-4057-a72b-fea7ac6be21d_img_1820462_FEMALE_BOB_원랭스컷_볼륨매직_none_1878.jpg,False,,,,,,True,Face not detected in input
+00938d6380c131fc40de40ca4686f517acc8a591_img_1822899_FEMALE_BOB_원랭스컷_볼륨매직_다크브라운_0731.jpg,False,21.62,971.14,0.8299,0.8393,39775,False,MAE 21.6 exceeds threshold 10.0
+0097bc4ceb3bf18263a7357cbdf6e186bf63ad1a_img_1759939_FEMALE_BOB_C컬펌_S컬펌_레이어드컷_3469.jpg,False,11.77,404.52,0.5734,0.7835,35436,False,MAE 11.8 exceeds threshold 10.0
+00be8f9f-1b1a-445d-b275-2ad90e9dc71a_source_img_1825058_FEMALE_MEDIUM_S컬펌_빌드펌_레이어드컷_5281.jpg,True,3.72,49.38,0.626,0.74,47292,False,
+00d70ee88a2ce85d9e5002dbcc56d27f1abe4cfc_img_1826161_FEMALE_LONG_볼륨매직_올리브브라운_none_1901.jpg,False,14.06,503.7,0.7707,0.8,14280,False,MAE 14.1 exceeds threshold 10.0
+00d7655ddfe18319e54ae117dffefe3cbb28fcd2_fac58b14-397d-4623-aa05-c7c910fbbbcf_source_0824.jpg,False,12.75,521.53,0.7529,0.786,32423,False,MAE 12.8 exceeds threshold 10.0
+00f8e349-3df3-4e7d-9591-fe0824720e42_img_1746215_FEMALE_MEDIUM_C컬펌_레이어드컷_볼륨펌_6870.jpg,True,8.75,222.04,0.7439,0.806,62541,False,
+00f8e349-3df3-4e7d-9591-fe0824720e42_img_1746675_FEMALE_MEDIUM_초코브라운_빌드펌_레이어드컷_1749.jpg,False,21.39,1034.62,0.5904,0.7604,59008,False,MAE 21.4 exceeds threshold 10.0
+010e30f0-16f8-4b22-bd57-227041fe041a_img_1730451_FEMALE_MEDIUM_초코브라운_C컬펌_내츄럴펌_4363.jpg,True,4.88,31.83,0.8757,0.894,79750,False,
+011b8164-9817-436b-8499-271ad4e6b356_img_1738534_LONG_C컬펌_레이어드컷_초코브라운_3681.jpg,False,20.86,961.9,0.5733,0.7856,60964,False,MAE 20.9 exceeds threshold 10.0
+013497f0-d21b-409d-bc0f-3a89e198208c_source_img_1762569_MALE_MEDIUM_댄디컷_댄디펌_애즈펌_4458.jpg,True,5.87,62.48,0.8661,0.8788,65499,False,
+0146a28f-257d-4501-bf16-994ecf733ec0_img_1809137_LONG_레이어드펌_초코브라운_레이어드컷_5139.jpg,False,,,,,,True,Face not detected in input
+01515692d3641d58eac536bc3a28c6ef9259d8a0_img_1790533_FEMALE_LONG_S컬펌_레이어드펌_허쉬컷_7682.jpg,False,20.19,981.29,0.7258,0.7597,42443,False,MAE 20.2 exceeds threshold 10.0
+01805414-64d9-4780-8c66-5e0b893f6224_source_4d0bfed7607ad10e40c96558ed6734e8ba4f1d19_6288.jpg,True,2.25,11.8,0.8287,0.8323,71823,False,
+01805414-64d9-4780-8c66-5e0b893f6224_source_img_1754378_FEMALE_MEDIUM_C컬펌_S컬펌_레이어드컷_6286.jpg,False,19.95,1085.08,0.6711,0.787,67918,False,MAE 19.9 exceeds threshold 10.0
+01d8bd7dd1de79b0a152380943c4a6af45d8e50e_img_1781506_FEMALE_MEDIUM_로즈골드_레이어드컷_빌드펌_3916.jpg,True,6.4,110.48,0.8795,0.8948,190644,False,
+022b110602049ce01cfac7d8b12ba280566e23ed_img_1808041_MALE_SHORT_리프펌_울프컷_none_6248.jpg,True,4.96,70.38,0.5147,0.5147,28309,False,
+02d126cca52f73520bc34888f75eda944b82ebf1_614c0741e5dad3ef174609776eed2846f0ef884b_6550.jpg,False,16.18,691.46,0.6174,0.841,65699,False,MAE 16.2 exceeds threshold 10.0
+02dbc21fb2a02ab362e139c1dd940bb8bf16074f_img_1753362_FEMALE_MEDIUM_레이어드펌_레이어드컷_블루블랙_7702.jpg,True,3.47,88.6,0.8523,0.8664,108174,False,
+02dbc21fb2a02ab362e139c1dd940bb8bf16074f_img_1765534_FEMALE_LONG_S컬펌_애쉬브라운_레이어드컷_1198.jpg,False,10.36,338.11,0.7656,0.7994,99803,False,MAE 10.4 exceeds threshold 10.0
+02f72889a7f209a8363a803220a070f76b1fb4b4_img_1833601_MALE_MEDIUM_댄디컷_쉐도우펌_투블럭컷_6664.jpg,True,6.01,137.04,0.8295,0.8349,66497,False,
+034be944-ac50-4b0d-98b5-5277aa11f003_img_1830873_FEMALE_LONG_S컬펌_레이어드펌_셋팅펌_4273.jpg,True,5.09,80.92,0.6167,0.823,60287,False,
+04081b79-4a0d-4b13-8235-c705ec19b4bc_source_img_1797886_FEMALE_BOB_물결펌_원랭스컷_블루블랙_7459.jpg,False,11.53,272.35,0.7294,0.7761,66770,False,MAE 11.5 exceeds threshold 10.0
+04569c86-fee2-44d8-b481-b692b35657db_img_1824787_FEMALE_MEDIUM_C컬펌_레이어드펌_레이어드컷_3938.jpg,False,11.78,464.65,0.7489,0.8265,98234,False,MAE 11.8 exceeds threshold 10.0
+0457cb81-2b4e-4431-9f29-6852810e9a9e_source_img_1762234_FEMALE_SHORT_다크브라운_보브컷_볼륨매직_2339.jpg,False,12.88,326.16,0.8241,0.8283,59895,False,MAE 12.9 exceeds threshold 10.0
+04709658-3a97-4556-be5a-4b90c9272d56_source_img_1741061_FEMALE_MEDIUM_C컬펌_빌드펌_레이어드컷_4687.jpg,False,11.17,341.92,0.7466,0.7529,62681,False,MAE 11.2 exceeds threshold 10.0
+04919d0652910345c9086a0892e4922b64f103b0_img_1794588_FEMALE_MEDIUM_C컬펌_레이어드펌_레이어드컷_5261.jpg,True,7.84,185.58,0.8148,0.8226,83047,False,
+04a18e0e04586d86dcb4f26624d85e85859cb7a3_img_1812019_LONG_애쉬블론드_레이어드컷_none_1578.jpg,False,17.89,813.87,0.6661,0.6675,17382,False,MAE 17.9 exceeds threshold 10.0
+04ee7017e137514d27dbad5f2db5f6a087bd34d0_img_1822306_FEMALE_MEDIUM_C컬펌_레이어드펌_레이어드컷_4019.jpg,False,18.39,702.13,0.762,0.786,45842,False,MAE 18.4 exceeds threshold 10.0
+04ffc52127dd73fbdab23cc3f917e2703ecc0b9c_img_1828155_FEMALE_LONG_C컬펌_레이어드펌_레이어드컷_5008.jpg,False,15.88,516.89,0.7657,0.7903,39214,False,MAE 15.9 exceeds threshold 10.0
+0558936bf4365e784c191c89d729879153895df6_img_1791967_MALE_SHORT_쉐도우펌_댄디컷_다크브라운_4165.jpg,False,12.35,559.81,0.7735,0.796,74546,False,MAE 12.3 exceeds threshold 10.0
+05598660601dc1e7232a40cf03d79f160de193eb_img_1809512_MALE_MEDIUM_아이롱펌_쉐도우펌_텍스쳐펌_2903.jpg,False,25.56,1262.33,0.7952,0.8497,44448,False,MAE 25.6 exceeds threshold 10.0
+06102e95c3c315a9820c911add3133e02ebc4372_img_1804174_MALE_MEDIUM_댄디컷_볼륨펌_댄디펌_5140.jpg,False,10.74,479.4,0.7938,0.8316,95377,False,MAE 10.7 exceeds threshold 10.0
+065c3ef3-4283-4ddb-bb7d-f82da2c6679d_img_1824685_FEMALE_BOB_초코브라운_원랭스컷_셋팅펌_3036.jpg,False,17.03,789.06,0.6224,0.7914,61407,False,MAE 17.0 exceeds threshold 10.0
+06698936c2e6d8b8e2b5cad1bd2bc85239c151ca_img_1727056_FEMALE_MEDIUM_레이어드컷_C컬펌_볼륨매직_3104.jpg,True,3.55,38.99,0.6468,0.656,31760,False,
+06698936c2e6d8b8e2b5cad1bd2bc85239c151ca_img_1805991_FEMALE_LONG_물결펌_젤리펌_히피펌_6409.jpg,True,6.29,206.2,0.6987,0.7014,33954,False,
+0673748ce247aaaddfebd94ebd80c24162382639_img_1738450_FEMALE_MEDIUM_레이어드컷_C컬펌_볼륨매직_6566.jpg,True,6.68,142.41,0.8164,0.83,88098,False,
+06a44b89-7017-401c-9bac-960dc15ddfd7_source_img_1779302_FEMALE_MEDIUM_레이어드컷_C컬펌_다크브라운_4582.jpg,True,9.34,244.28,0.8859,0.9002,65096,False,
+06d3659f-ee14-4842-b2b5-c871d717610f_img_1785288_FEMALE_BOB_허쉬컷_샤기컷_뱅헤어_6494.jpg,True,6.89,167.39,0.8854,0.9043,86404,False,
+06d978aa90d6b47f2a0d48351372a26d1a023587_img_1825058_FEMALE_MEDIUM_S컬펌_빌드펌_레이어드컷_3741.jpg,False,,,,,,True,Face not detected in input
+070afb9f07ef9cb274ed59aa8a45acf792294bdf_img_1800376_FEMALE_MEDIUM_레이어드컷_허쉬컷_샤기컷_0521.jpg,False,,,,,,True,Face not detected in input
+074388c733081506927921e168354e1dd50f293e_img_1730786_FEMALE_LONG_레이어드컷_볼륨매직_블루블랙_6408.jpg,True,2.4,25.69,0.8516,0.8963,112056,False,
+075adfb0371e93e4e38380e062214ce6b656904a_656660597a4243946978230da4f033d62c55a131_0714.jpg,True,4.04,54.17,0.6681,0.8254,72327,False,
+0771fb533cf4779884c3a69187c7c616238ba962_img_1737982_FEMALE_LONG_레이어드컷_C컬펌_none_0487.jpg,True,2.44,29.61,0.849,0.8683,130474,False,
+07b68aee-e57d-45ec-b35e-acfb355aea22_92d7467f-076f-4a13-8c48-71c9d8e38dc6_3611.jpg,True,2.64,14.48,0.8911,0.8985,65822,False,
+07d6fd6d-71e2-4315-9dc0-ce2a1b64974d_source_34f6febc-133e-4d58-a837-017538f232de_source_5485.jpg,True,5.96,172.44,0.7544,0.7592,49114,False,
+080cc38a2df351a358b942367a0012dad295b4e8_176778c5884f964741524297613b871b71128493_2134.jpg,False,10.57,266.32,0.8348,0.8711,52275,False,MAE 10.6 exceeds threshold 10.0
+08788f07-c6e7-4327-9b46-15bc0d2b9314_source_7732022a886d0791b37e8c7bf6bbe3b84d10f099_5174.jpg,True,1.3,3.37,0.9056,0.9062,50578,False,
+08b76808-b324-460e-9c24-d29615208571_source_img_1770661_FEMALE_LONG_히피펌_젤리펌_레이어드컷_3432.jpg,False,13.84,401.19,0.7954,0.8315,72713,False,MAE 13.8 exceeds threshold 10.0

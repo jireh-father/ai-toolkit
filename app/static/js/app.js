@@ -155,9 +155,17 @@ function openImagePopup(mode, image1Src, image2Src, title) {
     popupImageContainer.classList.remove('overlay-mode');
 
     if (mode === 'overlay' && image2Src) {
+        // const imageWidth = popupImage.offsetWidth;
+        // const imageHeight = popupImage.offsetHeight;
+        // console.log('imageWidth', imageWidth, 'imageHeight', imageHeight);
+
         popupImage2.src = image2Src;
         popupImage2.classList.remove('hidden');
         popupImage2.style.transform = 'scale(1)';
+        // remove style width and height of popupImage2
+        popupImage2.style.removeProperty('width');
+        popupImage2.style.removeProperty('height');
+        popupImage2.style.removeProperty('object-fit');
         popupImageContainer.classList.add('overlay-mode');
         popupToggleBtn.classList.add('hidden');
     } else if (mode === 'toggle' && image2Src) {

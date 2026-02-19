@@ -1,0 +1,13 @@
+torch>=2.1.0
+transformers>=4.45.0
+accelerate>=0.34.0
+Pillow>=10.0.0
+opencv-python>=4.8.0
+tqdm>=4.66.0
+pandas>=2.1.0
+Jinja2>=3.1.0
+PyYAML>=6.0
+bitsandbytes>=0.43.0
+auto-gptq>=0.7.0
+autoawq>=0.2.0
+qwen-vl-utils>=0.0.8
