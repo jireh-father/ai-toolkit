@@ -69,6 +69,10 @@ Examples:
   python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
       --model qwen3-vl-30b-a3b --low-vram --resize-short-side 384
 
+  # vLLM backend (start server first: python serve_vllm.py)
+  python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
+      --model qwen3-vl-30b-a3b --backend vllm --vllm-url http://localhost:8000
+
   # Multi-GPU with custom thresholds
   python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
       --num-gpus 2 --threshold-hair 8 --threshold-naturalness 6
@@ -110,6 +114,18 @@ Examples:
     parser.add_argument(
         "--low-vram", action="store_true",
         help="Enable low-VRAM mode: uses CPU offloading via device_map='auto'",
+    )
+
+    # Backend settings
+    parser.add_argument(
+        "--backend", type=str, default="local",
+        choices=["local", "vllm"],
+        help="Inference backend: 'local' loads model directly, "
+             "'vllm' calls external vLLM server (default: local)",
+    )
+    parser.add_argument(
+        "--vllm-url", type=str, default="http://localhost:8000",
+        help="vLLM server URL when --backend=vllm (default: http://localhost:8000)",
     )
 
     # Threshold settings
@@ -253,7 +269,10 @@ def main():
     else:
         # Step 4: Run evaluation
         logger.info(f"Step 4: Evaluating {len(remaining)} samples...")
-        logger.info(f"Model: {args.model}, Quantization: {args.quantization}, GPUs: {args.num_gpus}")
+        if args.backend == "vllm":
+            logger.info(f"Model: {args.model}, Backend: vLLM ({args.vllm_url})")
+        else:
+            logger.info(f"Model: {args.model}, Quantization: {args.quantization}, GPUs: {args.num_gpus}")
 
         from dataset_validator.core.parallel import run_parallel_evaluation
 
@@ -267,6 +286,8 @@ def main():
             checkpoint_manager=ckpt,
             checkpoint_interval=args.checkpoint_interval,
             low_vram=args.low_vram,
+            backend=args.backend,
+            vllm_url=args.vllm_url,
         )
 
         elapsed = time.time() - start_time
@@ -287,6 +308,7 @@ def main():
     metadata = {
         "model": args.model,
         "quantization": args.quantization,
+        "backend": args.backend,
         "timestamp": datetime.now().isoformat(),
         "elapsed_time_sec": elapsed_total,
         "seed": args.seed,

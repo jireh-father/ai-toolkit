@@ -102,12 +102,21 @@ def run_parallel_evaluation(
     checkpoint_manager=None,
     checkpoint_interval: int = 100,
     low_vram: bool = False,
+    backend: str = "local",
+    vllm_url: str = "http://localhost:8000",
 ) -> list[dict]:
-    """Run evaluation across multiple GPUs.
+    """Run evaluation across multiple GPUs or via vLLM server.
 
-    For num_gpus=1, runs directly without multiprocessing.
-    For num_gpus>1, spawns worker processes.
+    For backend="vllm", sends requests to external vLLM server (no local GPU needed).
+    For backend="local" with num_gpus=1, runs directly without multiprocessing.
+    For backend="local" with num_gpus>1, spawns worker processes.
     """
+    if backend == "vllm":
+        return _run_vllm(
+            entries, model_name, short_side, max_retries,
+            checkpoint_manager, checkpoint_interval, vllm_url,
+        )
+
     if num_gpus <= 1:
         return _run_single_gpu(
             entries, model_name, quantization, short_side,
@@ -120,6 +129,87 @@ def run_parallel_evaluation(
         short_side, max_retries, checkpoint_manager, checkpoint_interval,
         low_vram=low_vram,
     )
+
+
+def _run_vllm(
+    entries: list[dict],
+    model_name: str,
+    short_side: int,
+    max_retries: int,
+    checkpoint_manager,
+    checkpoint_interval: int,
+    vllm_url: str,
+) -> list[dict]:
+    """Run evaluation via vLLM OpenAI-compatible API (no local GPU needed)."""
+    from dataset_validator.core.evaluator import load_model_config, build_prompt
+    from dataset_validator.core.image_loader import load_image_triplet
+    from dataset_validator.core.vllm_client import evaluate_single_vllm, check_server_health
+
+    # Resolve HF model ID for vLLM API
+    model_config = load_model_config(model_name)
+    hf_id = model_config["hf_id"]
+    _, user_prompt = build_prompt(model_config["family"])
+
+    # Check server health
+    if not check_server_health(vllm_url):
+        logger.error(
+            f"vLLM server not reachable at {vllm_url}. "
+            f"Start it first: python dataset_validator/serve_vllm.py"
+        )
+        raise ConnectionError(f"vLLM server not reachable at {vllm_url}")
+
+    logger.info(f"Connected to vLLM server at {vllm_url} (model: {hf_id})")
+
+    results = []
+    pbar = tqdm(entries, desc="Evaluating (vLLM)", unit="sample")
+
+    for entry in pbar:
+        triplet = load_image_triplet(entry, short_side=short_side)
+        if triplet is None:
+            result = {
+                "filename": entry["stem"],
+                "scores": None,
+                "reason": "Failed to load images",
+                "error": True,
+            }
+        else:
+            scores = evaluate_single_vllm(
+                vllm_url=vllm_url,
+                model_id=hf_id,
+                images=triplet,
+                prompt=user_prompt,
+                max_retries=max_retries,
+            )
+            if scores is None:
+                result = {
+                    "filename": entry["stem"],
+                    "scores": None,
+                    "reason": "vLLM evaluation failed after retries",
+                    "error": True,
+                }
+            else:
+                reason = scores.pop("reason", "")
+                result = {
+                    "filename": entry["stem"],
+                    "scores": scores,
+                    "reason": reason,
+                    "error": False,
+                }
+
+        results.append(result)
+
+        if checkpoint_manager is not None:
+            checkpoint_manager.add_result(result)
+            if checkpoint_manager.should_save(len(results)):
+                checkpoint_manager.save()
+
+        passed = sum(
+            1 for r in results
+            if not r["error"] and r["scores"] is not None
+        )
+        pbar.set_postfix(done=len(results), ok=passed)
+
+    return results
 
 
 def _run_single_gpu(

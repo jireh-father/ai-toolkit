@@ -24,7 +24,8 @@
       "Bash(python -c:*)",
       "Bash(python dataset_validator/separate_face_failed.py:*)",
       "Bash(xargs:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "WebFetch(domain:docs.vllm.ai)"
     ]
   }
 }
