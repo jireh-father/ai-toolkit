@@ -301,8 +301,14 @@ def generate_all_reports(
     threshold_preservation: Optional[int] = None,
     threshold_naturalness: Optional[int] = None,
     threshold_face: Optional[int] = None,
+    image_dirs: Optional[dict] = None,
 ) -> dict:
     """Generate all report formats (JSON, CSV, HTML).
+
+    Args:
+        image_dirs: {"input": str, "reference": str, "output": str} absolute paths.
+                    If provided, generates scroll-based HTML report (file paths, infinite scroll).
+                    If None, generates legacy base64-embedded HTML report.
 
     Returns dict with paths to generated files.
     """
@@ -343,10 +349,18 @@ def generate_all_reports(
     csv_path = generate_csv_report(
         final_results, report_dir / "results.csv"
     )
-    html_path = generate_html_report(
-        final_results, metadata, statistics, entries_map,
-        report_dir / "summary.html",
-    )
+
+    # Use scroll-based HTML if image_dirs provided, otherwise legacy base64
+    if image_dirs:
+        html_path = generate_html_scroll_report(
+            final_results, metadata, statistics, image_dirs,
+            report_dir / "summary.html",
+        )
+    else:
+        html_path = generate_html_report(
+            final_results, metadata, statistics, entries_map,
+            report_dir / "summary.html",
+        )
 
     return {
         "json": json_path,

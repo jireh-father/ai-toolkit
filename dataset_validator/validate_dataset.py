@@ -316,6 +316,13 @@ def main():
         "num_gpus": args.num_gpus,
     }
 
+    # Pass image directory paths for scroll-based HTML report
+    image_dirs = {
+        "input": str(input_dir.resolve()),
+        "reference": str(reference_dir.resolve()),
+        "output": str(output_dir.resolve()),
+    }
+
     report_paths = generate_all_reports(
         results=results,
         metadata=metadata,
@@ -326,6 +333,7 @@ def main():
         threshold_preservation=args.threshold_preservation,
         threshold_naturalness=args.threshold_naturalness,
         threshold_face=args.threshold_face,
+        image_dirs=image_dirs,
     )
 
     # Final save checkpoint

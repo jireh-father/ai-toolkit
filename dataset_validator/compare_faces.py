@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dataset_validator.core.face_segmentor import FaceSegmentor
 from dataset_validator.core.image_loader import SUPPORTED_EXTENSIONS, _get_image_stems
-from dataset_validator.core.pixel_comparator import compare_faces, generate_diff_heatmap
+from dataset_validator.core.pixel_comparator import compare_faces
 from dataset_validator.report.face_report_generator import generate_all_reports
 
 logger = logging.getLogger(__name__)
@@ -132,19 +132,12 @@ def main():
     # Step 3: Process each pair
     start_time = time.time()
     results = []
-    image_paths = {}
-    heatmap_images = {}
 
     for pair in tqdm(pairs, desc="Comparing faces"):
         stem = pair["stem"]
         input_path = pair["input"]
         output_path = pair["output"]
         filename = input_path.name
-
-        image_paths[filename] = {
-            "input": input_path,
-            "output": output_path,
-        }
 
         try:
             # Load images
@@ -194,12 +187,6 @@ def main():
 
             results.append(result)
 
-            # Generate heatmap for failed samples (or all if small dataset)
-            intersection_mask = input_mask & output_mask
-            if not passed or len(pairs) <= 50:
-                heatmap = generate_diff_heatmap(input_img, output_img, intersection_mask)
-                heatmap_images[filename] = heatmap
-
         except Exception as e:
             logger.error(f"Error processing {filename}: {e}")
             results.append({
@@ -240,11 +227,14 @@ def main():
 
     # Step 5: Generate reports
     logger.info(f"Generating reports in {report_dir}")
+    image_dirs = {
+        "input": str(input_dir.resolve()),
+        "output": str(output_dir.resolve()),
+    }
     report_paths = generate_all_reports(
         results=results,
         metadata=metadata,
-        image_paths=image_paths,
-        heatmap_images=heatmap_images,
+        image_dirs=image_dirs,
         report_dir=report_dir,
     )
 

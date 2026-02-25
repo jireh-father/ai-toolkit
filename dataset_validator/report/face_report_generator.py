@@ -143,72 +143,21 @@ def generate_csv_report(
 def generate_html_report(
     results: list[dict],
     metadata: dict,
-    image_paths: dict,
-    heatmap_images: dict,
+    image_dirs: dict,
     output_path: Path,
-    max_gallery: int = 100,
 ) -> Path:
-    """Generate HTML dashboard report.
+    """Generate HTML dashboard report with infinite scroll and file-path images.
 
     Args:
-        results: list of result dicts
+        results: list of result dicts (non-skipped items need mae, mse, etc.)
         metadata: report metadata dict
-        image_paths: {filename: {"input": Path, "output": Path}}
-        heatmap_images: {filename: np.ndarray} difference heatmaps
+        image_dirs: {"input": str, "output": str} absolute directory paths
         output_path: where to write HTML
-        max_gallery: max number of items to show in gallery
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     statistics = _compute_statistics(results)
     histogram = _compute_mae_histogram(results)
-
-    # Separate passed/failed/skipped
-    failed_items = []
-    passed_items = []
-    skipped_items = []
-
-    for r in results:
-        if r.get("skipped"):
-            skipped_items.append(r)
-            continue
-
-        filename = r["filename"]
-        paths = image_paths.get(filename, {})
-
-        item = {
-            "filename": filename,
-            "mae": r.get("mae", 0),
-            "mse": r.get("mse", 0),
-            "mask_iou": r.get("mask_iou", 0),
-            "mask_area_ratio": r.get("mask_area_ratio", 0),
-            "reason": r.get("reason", ""),
-            "images": None,
-        }
-
-        if paths:
-            images_data = {}
-            if "input" in paths:
-                images_data["input"] = _image_path_to_base64(paths["input"])
-            if "output" in paths:
-                images_data["output"] = _image_path_to_base64(paths["output"])
-            if filename in heatmap_images and heatmap_images[filename] is not None:
-                images_data["heatmap"] = _image_to_base64(heatmap_images[filename])
-            item["images"] = images_data
-
-        if r.get("pass"):
-            passed_items.append(item)
-        else:
-            failed_items.append(item)
-
-    # Sort failed by MAE descending (worst first)
-    failed_items.sort(key=lambda x: x["mae"], reverse=True)
-    # Limit gallery size
-    failed_display = failed_items[:max_gallery]
-
-    # Sort passed by MAE ascending (best first), take top N
-    passed_items.sort(key=lambda x: x["mae"])
-    passed_display = passed_items[:max_gallery]
 
     # Elapsed time formatting
     elapsed = metadata.get("elapsed_time_sec", 0)
@@ -223,11 +172,10 @@ def generate_html_report(
     html = template.render(
         metadata=metadata,
         statistics=statistics,
+        results_json=json.dumps(results, ensure_ascii=False, default=str),
         statistics_json=json.dumps(statistics),
         histogram_json=json.dumps(histogram),
-        failed_samples=failed_display,
-        passed_samples=passed_display,
-        skipped_count=len(skipped_items),
+        image_dirs_json=json.dumps(image_dirs, ensure_ascii=False),
     )
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -240,9 +188,11 @@ def generate_html_report(
 def generate_all_reports(
     results: list[dict],
     metadata: dict,
-    image_paths: dict,
-    heatmap_images: dict,
+    image_dirs: dict,
     report_dir: Path,
+    # Legacy parameters (ignored, kept for backwards compatibility)
+    image_paths: dict | None = None,
+    heatmap_images: dict | None = None,
 ) -> dict:
     """Generate all report formats (JSON, CSV, HTML).
 
@@ -258,7 +208,7 @@ def generate_all_reports(
         results, report_dir / "face_results.csv"
     )
     html_path = generate_html_report(
-        results, metadata, image_paths, heatmap_images,
+        results, metadata, image_dirs,
         report_dir / "face_summary.html",
     )
 

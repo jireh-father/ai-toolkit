@@ -28,6 +28,10 @@
   .controls input, .controls select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
   .controls input[type="text"] { width: 220px; }
   .controls label { font-size: 14px; color: #666; }
+  .radio-group { display: flex; gap: 4px; }
+  .radio-group input[type="radio"] { display: none; }
+  .radio-group label { padding: 6px 16px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; color: #666; cursor: pointer; transition: all 0.2s; }
+  .radio-group input[type="radio"]:checked + label { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
 
   .gallery-section { margin-bottom: 40px; }
   .gallery-section h2 { margin-bottom: 16px; color: #1a1a2e; }
@@ -110,17 +114,17 @@
 
   <!-- Controls -->
   <div class="controls">
+    <div class="radio-group">
+      <input type="radio" id="filterAll" name="filter" value="all" checked onchange="applyFilter()">
+      <label for="filterAll">All</label>
+      <input type="radio" id="filterPass" name="filter" value="pass" onchange="applyFilter()">
+      <label for="filterPass">Passed</label>
+      <input type="radio" id="filterFail" name="filter" value="fail" onchange="applyFilter()">
+      <label for="filterFail">Failed</label>
+    </div>
     <div>
       <label>Search: </label>
       <input type="text" id="searchInput" placeholder="Filename..." oninput="applyFilter()">
-    </div>
-    <div>
-      <label>Filter: </label>
-      <select id="filterSelect" onchange="applyFilter()">
-        <option value="all">All</option>
-        <option value="fail">Failed Only</option>
-        <option value="pass">Passed Only</option>
-      </select>
     </div>
     <div>
       <label>Sort: </label>
@@ -255,7 +259,7 @@ function loadMore() {
 
 function applyFilter() {
   const search = document.getElementById('searchInput').value.toLowerCase();
-  const filter = document.getElementById('filterSelect').value;
+  const filter = document.querySelector('input[name="filter"]:checked').value;
   const sortBy = document.getElementById('sortSelect').value;
 
   filteredResults = RESULTS.filter(r => {
