@@ -95,8 +95,8 @@ Examples:
         help="Enable MoE expert parallelism (recommended for MoE models)",
     )
     parser.add_argument(
-        "--limit-mm-per-prompt", type=str, default="image=6",
-        help="Limit multimodal inputs per prompt (default: image=6)",
+        "--limit-mm-per-prompt", type=str, default='{"image": 6}',
+        help='Limit multimodal inputs per prompt (default: {"image": 6})',
     )
 
     return parser.parse_args()
