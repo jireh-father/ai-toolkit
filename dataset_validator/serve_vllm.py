@@ -82,8 +82,8 @@ Examples:
     )
     parser.add_argument(
         "--dtype", type=str, default="auto",
-        choices=["auto", "float16", "bfloat16"],
-        help="Model dtype (default: auto)",
+        choices=["auto", "float16", "bfloat16", "half", "bf16"],
+        help="Model dtype (default: auto). 'half' is alias for float16, 'bf16' is alias for bfloat16.",
     )
     parser.add_argument(
         "--quantization", type=str, default=None,
@@ -104,6 +104,12 @@ Examples:
 
 def main():
     args = parse_args()
+
+    if args.dtype == "half":
+        args.dtype = "float16"
+    elif args.dtype == "bf16":
+        args.dtype = "bfloat16"
+
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s] %(levelname)s: %(message)s",
