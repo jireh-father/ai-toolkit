@@ -57,6 +57,16 @@ Supported models:
   minicpm-v-2.6          ~6GB (INT4),   ~16GB (FP16)
   gemma-3-12b-vision     ~8-9GB (INT4), ~24GB (FP16)
 
+  Qwen3.5 (unified vision-language):
+  qwen3.5-0.8b           ~1GB (INT4),   ~2GB (FP16)
+  qwen3.5-2b             ~2GB (INT4),   ~4GB (FP16)
+  qwen3.5-4b             ~3GB (INT4),   ~8GB (FP16)
+  qwen3.5-9b             ~6GB (INT4),   ~18GB (FP16)
+  qwen3.5-27b            ~16GB (INT4),  ~54GB (FP16)
+  qwen3.5-35b-a3b        ~8GB (INT4),   ~20GB (FP16) [MoE]
+  qwen3.5-122b-a10b      ~30GB (INT4),  ~80GB (FP16) [MoE]
+  qwen3.5-397b-a17b      ~60GB (INT4),  ~150GB (FP16) [MoE]
+
 Examples:
   # Basic usage
   python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output
@@ -72,6 +82,14 @@ Examples:
   # vLLM backend (start server first: python serve_vllm.py)
   python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
       --model qwen3-vl-30b-a3b --backend vllm --vllm-url http://localhost:8000
+
+  # Ollama backend (pull model first: ollama pull qwen3.5:9b)
+  python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
+      --model qwen3.5-9b --backend ollama --ollama-url http://localhost:11434
+
+  # Qwen3.5 local (HuggingFace direct)
+  python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
+      --model qwen3.5-9b
 
   # Multi-GPU with custom thresholds
   python validate_dataset.py --input-dir ./input --reference-dir ./ref --output-dir ./output \\
@@ -119,13 +137,18 @@ Examples:
     # Backend settings
     parser.add_argument(
         "--backend", type=str, default="local",
-        choices=["local", "vllm"],
+        choices=["local", "vllm", "ollama"],
         help="Inference backend: 'local' loads model directly, "
-             "'vllm' calls external vLLM server (default: local)",
+             "'vllm' calls external vLLM server, "
+             "'ollama' calls Ollama server (default: local)",
     )
     parser.add_argument(
         "--vllm-url", type=str, default="http://localhost:8000",
         help="vLLM server URL when --backend=vllm (default: http://localhost:8000)",
+    )
+    parser.add_argument(
+        "--ollama-url", type=str, default="http://localhost:11434",
+        help="Ollama server URL when --backend=ollama (default: http://localhost:11434)",
     )
 
     # Threshold settings
@@ -271,6 +294,8 @@ def main():
         logger.info(f"Step 4: Evaluating {len(remaining)} samples...")
         if args.backend == "vllm":
             logger.info(f"Model: {args.model}, Backend: vLLM ({args.vllm_url})")
+        elif args.backend == "ollama":
+            logger.info(f"Model: {args.model}, Backend: Ollama ({args.ollama_url})")
         else:
             logger.info(f"Model: {args.model}, Quantization: {args.quantization}, GPUs: {args.num_gpus}")
 
@@ -288,6 +313,7 @@ def main():
             low_vram=args.low_vram,
             backend=args.backend,
             vllm_url=args.vllm_url,
+            ollama_url=args.ollama_url,
         )
 
         elapsed = time.time() - start_time

@@ -66,6 +66,59 @@ python dataset_validator/validate_dataset.py \
   --report-dir ./reports
 ```
 
+### 백엔드별 실행 (Local / vLLM / Ollama)
+
+3가지 추론 백엔드를 지원합니다:
+- **local**: HuggingFace 모델을 직접 GPU에 로딩 (기본값)
+- **vllm**: 외부 vLLM 서버에 API 요청 (로컬 GPU 불필요)
+- **ollama**: Ollama 서버에 API 요청 (로컬 GPU 불필요)
+
+#### Local (HuggingFace 직접 로딩)
+```bash
+# 기본 — GPU에 모델을 직접 로딩하여 추론
+python dataset_validator/validate_dataset.py \
+  --input-dir ./data/input \
+  --reference-dir ./data/reference \
+  --output-dir ./data/output \
+  --model qwen3.5-9b \
+  --backend local \
+  --report-dir ./reports
+```
+
+#### vLLM 서버
+```bash
+# 1단계: vLLM 서버 시작
+python dataset_validator/serve_vllm.py --model qwen3.5-9b
+
+# 2단계: 검증 실행 (별도 터미널)
+python dataset_validator/validate_dataset.py \
+  --input-dir ./data/input \
+  --reference-dir ./data/reference \
+  --output-dir ./data/output \
+  --model qwen3.5-9b \
+  --backend vllm \
+  --vllm-url http://localhost:8000 \
+  --report-dir ./reports
+```
+
+#### Ollama
+```bash
+# 1단계: Ollama에서 모델 다운로드
+ollama pull qwen3.5:9b
+
+# 2단계: 검증 실행 (Ollama가 실행 중이어야 함)
+python dataset_validator/validate_dataset.py \
+  --input-dir ./data/input \
+  --reference-dir ./data/reference \
+  --output-dir ./data/output \
+  --model qwen3.5-9b \
+  --backend ollama \
+  --ollama-url http://localhost:11434 \
+  --report-dir ./reports
+```
+
+> **참고**: Ollama 모델명 매핑은 자동으로 처리됩니다. `--model qwen3.5-9b`로 지정하면 내부적으로 Ollama 태그 `qwen3.5:9b`로 변환됩니다.
+
 ## 2. 불합격 데이터 분리 (separate_failed.py)
 
 ### 불합격 데이터 복사
@@ -114,6 +167,9 @@ python dataset_validator/separate_failed.py \
 | `--quantization` | `int4` | 양자화: int4, int8, fp16 |
 | `--num-gpus` | `1` | GPU 수 |
 | `--batch-size` | `4` | GPU당 배치 크기 |
+| `--backend` | `local` | 추론 백엔드: local, vllm, ollama |
+| `--vllm-url` | `http://localhost:8000` | vLLM 서버 URL |
+| `--ollama-url` | `http://localhost:11434` | Ollama 서버 URL |
 | `--threshold` | `7` | 전체 항목 합격 임계값 |
 | `--threshold-hair` | None | 헤어 항목 임계값 |
 | `--threshold-face` | None | 얼굴 항목 임계값 |

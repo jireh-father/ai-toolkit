@@ -151,6 +151,9 @@ def load_vlm(
             hf_id, **load_kwargs
         )
         processor = AutoProcessor.from_pretrained(hf_id, trust_remote_code=True)
+    elif family == "qwen3_5":
+        model = AutoModelForCausalLM.from_pretrained(hf_id, **load_kwargs)
+        processor = AutoProcessor.from_pretrained(hf_id, trust_remote_code=True)
     elif family == "internvl":
         model = AutoModelForCausalLM.from_pretrained(hf_id, **load_kwargs)
         processor = AutoProcessor.from_pretrained(hf_id, trust_remote_code=True)
@@ -197,6 +200,31 @@ def _build_messages_qwen(
 
     Places a text label before each image so the VLM clearly knows
     which image is INPUT, REFERENCE, and OUTPUT.
+    """
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "[INPUT] Original person before hair editing:"},
+                {"type": "image", "image": images[0]},
+                {"type": "text", "text": "[REFERENCE] Target hairstyle to apply:"},
+                {"type": "image", "image": images[1]},
+                {"type": "text", "text": "[OUTPUT] Result after hair transfer:"},
+                {"type": "image", "image": images[2]},
+                {"type": "text", "text": prompt},
+            ],
+        }
+    ]
+
+
+def _build_messages_qwen3_5(
+    images: tuple[Image.Image, Image.Image, Image.Image],
+    prompt: str,
+) -> list[dict]:
+    """Build chat messages for Qwen3.5 unified vision-language models.
+
+    Qwen3.5 uses 'image' type with PIL Image objects directly,
+    similar to Qwen2-VL but through AutoModelForCausalLM.
     """
     return [
         {
@@ -329,6 +357,20 @@ def evaluate_single(
         try:
             if family == "qwen2_vl":
                 messages = _build_messages_qwen(images, user_prompt)
+                from qwen_vl_utils import process_vision_info
+                text = processor.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
+                image_inputs, video_inputs = process_vision_info(messages)
+                inputs = processor(
+                    text=[text],
+                    images=image_inputs,
+                    videos=video_inputs,
+                    padding=True,
+                    return_tensors="pt",
+                ).to(model.device)
+            elif family == "qwen3_5":
+                messages = _build_messages_qwen3_5(images, user_prompt)
                 from qwen_vl_utils import process_vision_info
                 text = processor.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True

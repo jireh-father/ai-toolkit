@@ -104,10 +104,12 @@ def run_parallel_evaluation(
     low_vram: bool = False,
     backend: str = "local",
     vllm_url: str = "http://localhost:8000",
+    ollama_url: str = "http://localhost:11434",
 ) -> list[dict]:
-    """Run evaluation across multiple GPUs or via vLLM server.
+    """Run evaluation across multiple GPUs or via external server.
 
     For backend="vllm", sends requests to external vLLM server (no local GPU needed).
+    For backend="ollama", sends requests to Ollama server (no local GPU needed).
     For backend="local" with num_gpus=1, runs directly without multiprocessing.
     For backend="local" with num_gpus>1, spawns worker processes.
     """
@@ -115,6 +117,12 @@ def run_parallel_evaluation(
         return _run_vllm(
             entries, model_name, short_side, max_retries,
             checkpoint_manager, checkpoint_interval, vllm_url,
+        )
+
+    if backend == "ollama":
+        return _run_ollama(
+            entries, model_name, short_side, max_retries,
+            checkpoint_manager, checkpoint_interval, ollama_url,
         )
 
     if num_gpus <= 1:
@@ -185,6 +193,84 @@ def _run_vllm(
                     "filename": entry["stem"],
                     "scores": None,
                     "reason": "vLLM evaluation failed after retries",
+                    "error": True,
+                }
+            else:
+                reason = scores.pop("reason", "")
+                result = {
+                    "filename": entry["stem"],
+                    "scores": scores,
+                    "reason": reason,
+                    "error": False,
+                }
+
+        results.append(result)
+
+        if checkpoint_manager is not None:
+            checkpoint_manager.add_result(result)
+            if checkpoint_manager.should_save(len(results)):
+                checkpoint_manager.save()
+
+        passed = sum(
+            1 for r in results
+            if not r["error"] and r["scores"] is not None
+        )
+        pbar.set_postfix(done=len(results), ok=passed)
+
+    return results
+
+
+def _run_ollama(
+    entries: list[dict],
+    model_name: str,
+    short_side: int,
+    max_retries: int,
+    checkpoint_manager,
+    checkpoint_interval: int,
+    ollama_url: str,
+) -> list[dict]:
+    """Run evaluation via Ollama OpenAI-compatible API."""
+    from dataset_validator.core.evaluator import build_prompt, load_model_config
+    from dataset_validator.core.image_loader import load_image_triplet
+    from dataset_validator.core.ollama_client import evaluate_single_ollama, check_server_health
+
+    model_config = load_model_config(model_name)
+    _, user_prompt = build_prompt(model_config["family"])
+
+    if not check_server_health(ollama_url):
+        logger.error(
+            f"Ollama server not reachable at {ollama_url}. "
+            f"Is Ollama running? Start with: ollama serve"
+        )
+        raise ConnectionError(f"Ollama server not reachable at {ollama_url}")
+
+    logger.info(f"Connected to Ollama server at {ollama_url}")
+
+    results = []
+    pbar = tqdm(entries, desc="Evaluating (Ollama)", unit="sample")
+
+    for entry in pbar:
+        triplet = load_image_triplet(entry, short_side=short_side)
+        if triplet is None:
+            result = {
+                "filename": entry["stem"],
+                "scores": None,
+                "reason": "Failed to load images",
+                "error": True,
+            }
+        else:
+            scores = evaluate_single_ollama(
+                ollama_url=ollama_url,
+                model_name=model_name,
+                images=triplet,
+                prompt=user_prompt,
+                max_retries=max_retries,
+            )
+            if scores is None:
+                result = {
+                    "filename": entry["stem"],
+                    "scores": None,
+                    "reason": "Ollama evaluation failed after retries",
                     "error": True,
                 }
             else:
