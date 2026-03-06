@@ -196,6 +196,8 @@ python dataset_validator/separate_failed.py \
 
 ## 4. 지원 모델
 
+### 기존 모델
+
 | 모델명 | VRAM (INT4) | VRAM (FP16) |
 |--------|-------------|-------------|
 | qwen2.5-vl-7b | ~5-6GB | ~14GB |
@@ -205,6 +207,22 @@ python dataset_validator/separate_failed.py \
 | qwen3-vl-30b-a3b (MoE) | ~7-8GB | ~18GB |
 | minicpm-v-2.6 | ~6GB | ~16GB |
 | gemma-3-12b-vision | ~8-9GB | ~24GB |
+
+### Qwen3.5 (통합 비전-언어 모델)
+
+Qwen3.5는 별도 VL 변형 없이 기본 모델 자체가 이미지를 지원하는 통합 모델입니다.
+Local, vLLM, Ollama 3가지 백엔드 모두 사용 가능합니다.
+
+| 모델명 | 파라미터 | VRAM (INT4) | VRAM (FP16) | Ollama 태그 |
+|--------|----------|-------------|-------------|-------------|
+| qwen3.5-0.8b | 0.8B | ~1GB | ~2GB | qwen3.5:0.8b |
+| qwen3.5-2b | 2B | ~2GB | ~4GB | qwen3.5:2b |
+| qwen3.5-4b | 4B | ~3GB | ~8GB | qwen3.5:4b |
+| qwen3.5-9b | 9B | ~6GB | ~18GB | qwen3.5:9b |
+| qwen3.5-27b | 27B | ~16GB | ~54GB | qwen3.5:27b |
+| qwen3.5-35b-a3b | 35B (MoE, 활성 3B) | ~8GB | ~20GB | qwen3.5:35b-a3b |
+| qwen3.5-122b-a10b | 122B (MoE, 활성 10B) | ~30GB | ~80GB | qwen3.5:122b |
+| qwen3.5-397b-a17b | 397B (MoE, 활성 17B) | ~60GB | ~150GB | qwen3.5:397b |
 
 ## 5. 평가 항목
 
