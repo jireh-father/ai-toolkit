@@ -115,7 +115,12 @@ python dataset_validator/validate_dataset.py \
   --backend ollama \
   --ollama-url http://localhost:11434 \
   --report-dir ./reports
+
+# test inference
+
 ```
+
+
 
 > **참고**: Ollama 모델명 매핑은 자동으로 처리됩니다. `--model qwen3.5-9b`로 지정하면 내부적으로 Ollama 태그 `qwen3.5:9b`로 변환됩니다.
 

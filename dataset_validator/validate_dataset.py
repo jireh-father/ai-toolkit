@@ -13,6 +13,7 @@ import argparse
 import json
 import logging
 import random
+import shutil
 import sys
 import time
 from datetime import datetime
@@ -177,6 +178,10 @@ Examples:
     parser.add_argument(
         "--report-dir", type=str, default="./reports",
         help="Directory for output reports (default: ./reports)",
+    )
+    parser.add_argument(
+        "--copy-images", action="store_true",
+        help="Copy images to report-dir/images/ and use copied paths in HTML report",
     )
 
     # Checkpoint settings
@@ -348,6 +353,35 @@ def main():
         "reference": str(reference_dir.resolve()),
         "output": str(output_dir.resolve()),
     }
+
+    # Copy images to report-dir if requested
+    if args.copy_images:
+        logger.info("Copying images to report directory...")
+        report_images_dir = Path(args.report_dir) / "images"
+        for role in ["input", "reference", "output"]:
+            dest_dir = report_images_dir / role
+            dest_dir.mkdir(parents=True, exist_ok=True)
+
+        copied_count = 0
+        for entry in valid_entries:
+            for role in ["input", "reference", "output"]:
+                src_path = Path(entry[role])
+                dest_path = report_images_dir / role / src_path.name
+                if not dest_path.exists():
+                    try:
+                        shutil.copy2(src_path, dest_path)
+                        copied_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to copy {src_path}: {e}")
+
+        logger.info(f"Copied {copied_count} images to {report_images_dir}")
+
+        # Update image_dirs to point to copied images
+        image_dirs = {
+            "input": str(report_images_dir.resolve() / "input"),
+            "reference": str(report_images_dir.resolve() / "reference"),
+            "output": str(report_images_dir.resolve() / "output"),
+        }
 
     report_paths = generate_all_reports(
         results=results,
