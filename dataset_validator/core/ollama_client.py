@@ -98,7 +98,7 @@ def evaluate_single_ollama(
                 "stream": False,
             }
 
-            resp = requests.post(api_url, json=payload, timeout=300)
+            resp = requests.post(api_url, json=payload, timeout=1000)
             resp.raise_for_status()
 
             data = resp.json()
