@@ -31,7 +31,6 @@ SCORE_FIELDS = [
     "hair_color",
     "hair_length",
     "hair_texture",
-    "non_hair_preservation",
     "naturalness",
 ]
 

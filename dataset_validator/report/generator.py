@@ -85,15 +85,13 @@ def _build_result_entry(
     result: dict,
     threshold: int,
     threshold_hair: Optional[int],
-    threshold_preservation: Optional[int],
     threshold_naturalness: Optional[int],
-    threshold_face: Optional[int],
 ) -> dict:
     """Build a single result entry for the JSON report."""
     scores = result.get("scores")
     passed = is_pass(
         scores, threshold, threshold_hair,
-        threshold_preservation, threshold_naturalness, threshold_face,
+        threshold_naturalness,
     ) if scores else False
 
     # Determine filename with extension
@@ -298,9 +296,7 @@ def generate_all_reports(
     report_dir: Path,
     threshold: int = 7,
     threshold_hair: Optional[int] = None,
-    threshold_preservation: Optional[int] = None,
     threshold_naturalness: Optional[int] = None,
-    threshold_face: Optional[int] = None,
     image_dirs: Optional[dict] = None,
 ) -> dict:
     """Generate all report formats (JSON, CSV, HTML).
@@ -320,7 +316,7 @@ def generate_all_reports(
     for r in results:
         entry = _build_result_entry(
             r, threshold, threshold_hair,
-            threshold_preservation, threshold_naturalness, threshold_face,
+            threshold_naturalness,
         )
         final_results.append(entry)
 

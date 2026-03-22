@@ -162,16 +162,8 @@ Examples:
         help="Threshold for hair criteria (overrides --threshold for hair fields)",
     )
     parser.add_argument(
-        "--threshold-preservation", type=int, default=None,
-        help="Threshold for non_hair_preservation (overrides --threshold)",
-    )
-    parser.add_argument(
         "--threshold-naturalness", type=int, default=None,
         help="Threshold for naturalness (overrides --threshold)",
-    )
-    parser.add_argument(
-        "--threshold-face", type=int, default=None,
-        help="Threshold for face criteria: face_shape_preservation, face_color_preservation (overrides --threshold)",
     )
 
     # Output settings
@@ -391,9 +383,7 @@ def main():
         report_dir=Path(args.report_dir),
         threshold=args.threshold,
         threshold_hair=args.threshold_hair,
-        threshold_preservation=args.threshold_preservation,
         threshold_naturalness=args.threshold_naturalness,
-        threshold_face=args.threshold_face,
         image_dirs=image_dirs,
     )
 

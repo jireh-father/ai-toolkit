@@ -46,9 +46,7 @@ def main():
     parser.add_argument("--report-dir", default="./reports", help="Output directory for reports")
     parser.add_argument("--threshold", type=int, default=7, help="Global pass threshold (0-10)")
     parser.add_argument("--threshold-hair", type=int, default=None, help="Threshold for hair criteria")
-    parser.add_argument("--threshold-preservation", type=int, default=None, help="Threshold for non_hair_preservation")
     parser.add_argument("--threshold-naturalness", type=int, default=None, help="Threshold for naturalness")
-    parser.add_argument("--threshold-face", type=int, default=None, help="Threshold for face criteria: face_shape_preservation, face_color_preservation")
     args = parser.parse_args()
 
     # Validate input files
@@ -96,9 +94,7 @@ def main():
         report_dir=report_dir,
         threshold=args.threshold,
         threshold_hair=args.threshold_hair,
-        threshold_preservation=args.threshold_preservation,
         threshold_naturalness=args.threshold_naturalness,
-        threshold_face=args.threshold_face,
     )
 
     # Generate mismatch_report.json if data is available

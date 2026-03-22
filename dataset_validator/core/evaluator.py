@@ -17,15 +17,9 @@ SCORE_FIELDS = [
     "hair_length",
     "hair_texture",
     "hair_shape",
-    "bangs_shape",
-    "bangs_length",
-    "hair_sharpness_vs_input",
     "hair_sharpness_vs_reference",
     "hair_detail",
-    "non_hair_preservation",
     "naturalness",
-    "face_shape_preservation",
-    "face_color_preservation",
 ]
 
 EVALUATION_PROMPT = """You are a strict image quality assessor for hair transfer models.
@@ -44,15 +38,10 @@ CRITERIA (compare very carefully — look at details, not just overall impressio
 3. hair_length: Does OUTPUT's hair length match REFERENCE? Short vs long is an obvious difference — score accordingly.
 4. hair_texture: Does OUTPUT's hair texture match REFERENCE? Straight vs wavy vs curly vs permed. Wet vs dry hair is different texture.
 5. hair_shape: Does OUTPUT's overall hair shape/silhouette match REFERENCE? Compare the full hairstyle shape, volume, layering, parting, and flow direction. The hair angle should match INPUT's head pose, but the style/shape should replicate REFERENCE.
-6. bangs_shape: Does OUTPUT's bangs (fringe) shape match REFERENCE? Compare bangs style — straight-across, side-swept, curtain bangs, wispy, blunt, layered, or no bangs. **CRITICAL: First determine if REFERENCE has bangs. If REFERENCE has NO bangs AND OUTPUT also has NO bangs, you MUST score 10 — this is a perfect match. If one has bangs and the other does not, score very LOW (0-2).**
-7. bangs_length: Does OUTPUT's bangs length match REFERENCE? Compare how far the bangs extend — above eyebrows, eyebrow-level, eye-covering, cheekbone-length, or no bangs. **CRITICAL: First determine if REFERENCE has bangs. If REFERENCE has NO bangs AND OUTPUT also has NO bangs, you MUST score 10 — absence of bangs in both is a perfect match. If one has bangs and the other does not, score very LOW (0-2).**
-8. hair_sharpness_vs_input: Compare OUTPUT's hair sharpness/clarity against INPUT's hair. Is the OUTPUT hair at least as sharp and clear as INPUT? Look for blurriness, softness, loss of edge definition, or smearing in OUTPUT hair compared to INPUT hair. Score 10 if OUTPUT hair is equally or more sharp than INPUT. Score LOW if OUTPUT hair is noticeably blurrier, softer, or less defined than INPUT.
-9. hair_sharpness_vs_reference: Compare OUTPUT's hair sharpness/clarity against REFERENCE's hair. Does OUTPUT's hair have similar sharpness and clarity as REFERENCE? Look for blurriness, loss of fine details, or degraded quality. Score 10 if OUTPUT hair matches REFERENCE sharpness. Score LOW if OUTPUT hair is significantly blurrier or less crisp than REFERENCE.
-10. hair_detail: How well does OUTPUT express fine hair details? Evaluate strand-level detail, texture definition, highlights/shadows in individual strands, flyaway hairs, natural hair layering. Score 10 for photorealistic strand-level detail. Score LOW if hair looks flat, painted, plasticky, or lacks natural strand separation and micro-details.
-11. non_hair_preservation: Is everything EXCEPT hair in OUTPUT identical to INPUT? Check face, eyes, skin, clothing, background, accessories. Any change = lower score.
-12. naturalness: Does the hair edit look realistic? Check hair-face boundary, artifacts, color bleeding, lighting consistency, unnatural edges.
-13. face_shape_preservation: Is OUTPUT's face shape EXACTLY identical to INPUT? Examine in extreme detail: jawline contour, chin shape, cheekbone width, forehead height/width, face outline symmetry, ear visibility. The face geometry must be pixel-level identical. ANY distortion, warping, slimming, widening, or reshaping of the face = score LOW. Even subtle changes to jaw angle or chin shape = deduct heavily.
-14. face_color_preservation: Is OUTPUT's face/skin color EXACTLY identical to INPUT? Examine in extreme detail: skin tone, brightness, contrast, shadow patterns, under-eye area, lip color, complexion uniformity. Compare side-by-side very carefully. ANY color shift, brightening, darkening, smoothing, redness change, or tonal difference = score LOW. The face color must be indistinguishable from INPUT.
+6. hair_sharpness_vs_reference: Compare OUTPUT's hair sharpness/clarity against REFERENCE's hair. Does OUTPUT's hair have similar sharpness and clarity as REFERENCE? Look for blurriness, loss of fine details, or degraded quality. Score 10 if OUTPUT hair matches REFERENCE sharpness. Score LOW if OUTPUT hair is significantly blurrier or less crisp than REFERENCE.
+7. hair_detail: How well does OUTPUT express fine hair details? Evaluate strand-level detail, texture definition, highlights/shadows in individual strands, flyaway hairs, natural hair layering. Score 10 for photorealistic strand-level detail. Score LOW if hair looks flat, painted, plasticky, or lacks natural strand separation and micro-details.
+8. naturalness: Does the hair edit look realistic? Check hair-face boundary, artifacts, color bleeding, lighting consistency, unnatural edges.
+
 SCORING (be honest, not generous):
 - 0-3: Major failure (wrong hairstyle, face changed, severe artifacts)
 - 4-5: Poor (clearly visible problems, obvious mismatch)
@@ -61,7 +50,7 @@ SCORING (be honest, not generous):
 - 9-10: Near perfect (rare — reserve for truly excellent results)
 
 Respond with ONLY a JSON object, no other text:
-{"hair_similarity_overall":<0-10>,"hair_color":<0-10>,"hair_length":<0-10>,"hair_texture":<0-10>,"hair_shape":<0-10>,"bangs_shape":<0-10>,"bangs_length":<0-10>,"hair_sharpness_vs_input":<0-10>,"hair_sharpness_vs_reference":<0-10>,"hair_detail":<0-10>,"non_hair_preservation":<0-10>,"naturalness":<0-10>,"face_shape_preservation":<0-10>,"face_color_preservation":<0-10>,"reason":"<1-2 sentences>"}"""
+{"hair_similarity_overall":<0-10>,"hair_color":<0-10>,"hair_length":<0-10>,"hair_texture":<0-10>,"hair_shape":<0-10>,"hair_sharpness_vs_reference":<0-10>,"hair_detail":<0-10>,"naturalness":<0-10>,"reason":"<1-2 sentences>"}"""
 
 
 def load_model_config(model_name: str) -> dict:
@@ -494,9 +483,7 @@ def evaluate_batch(
 
 def is_pass(scores: dict, threshold: int = 7,
             threshold_hair: Optional[int] = None,
-            threshold_preservation: Optional[int] = None,
             threshold_naturalness: Optional[int] = None,
-            threshold_face: Optional[int] = None,
             threshold_angle: Optional[int] = None) -> bool:
     """Determine if scores pass the threshold criteria.
 
@@ -506,28 +493,17 @@ def is_pass(scores: dict, threshold: int = 7,
         return False
 
     hair_thresh = threshold_hair if threshold_hair is not None else threshold
-    pres_thresh = threshold_preservation if threshold_preservation is not None else threshold
     nat_thresh = threshold_naturalness if threshold_naturalness is not None else threshold
-    face_thresh = threshold_face if threshold_face is not None else threshold
 
     hair_fields = [
         "hair_similarity_overall", "hair_color", "hair_length", "hair_texture",
-        "hair_shape", "bangs_shape", "bangs_length",
-        "hair_sharpness_vs_input", "hair_sharpness_vs_reference", "hair_detail",
+        "hair_shape", "hair_sharpness_vs_reference", "hair_detail",
     ]
     for field in hair_fields:
         if scores.get(field, 0) < hair_thresh:
             return False
 
-    if scores.get("non_hair_preservation", 0) < pres_thresh:
-        return False
-
     if scores.get("naturalness", 0) < nat_thresh:
         return False
-
-    face_fields = ["face_shape_preservation", "face_color_preservation"]
-    for field in face_fields:
-        if scores.get(field, 0) < face_thresh:
-            return False
 
     return True

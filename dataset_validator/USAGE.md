@@ -35,13 +35,13 @@ python dataset_validator/validate_dataset.py \
 
 ### 커스텀 임계값
 ```bash
-# 헤어 항목(hair_shape, bangs_shape, bangs_length) 8점, 얼굴 항목(face_shape/color) 6점
+# 헤어 항목 8점, naturalness 6점
 python dataset_validator/validate_dataset.py \
   --input-dir E:\backup\aihub2025_gpu\output\input_image \
   --reference-dir E:\backup\aihub2025_gpu\output\reference_image \
   --output-dir E:\backup\aihub2025_gpu\output \
   --threshold-hair 8 \
-  --threshold-face 6 \
+  --threshold-naturalness 6 \
   --report-dir ./reports
 ```
 
@@ -233,11 +233,14 @@ Local, vLLM, Ollama 3가지 백엔드 모두 사용 가능합니다.
 
 | 항목 | 설명 |
 |------|------|
+| `hair_similarity_overall` | OUTPUT 헤어스타일이 REFERENCE와 전체적으로 일치하는지 |
+| `hair_color` | OUTPUT 헤어 색상이 REFERENCE와 일치하는지 |
+| `hair_length` | OUTPUT 헤어 길이가 REFERENCE와 일치하는지 |
+| `hair_texture` | OUTPUT 헤어 질감이 REFERENCE와 일치하는지 |
 | `hair_shape` | OUTPUT 헤어 형태/실루엣이 REFERENCE와 일치하는지 |
-| `bangs_shape` | OUTPUT 앞머리 스타일이 REFERENCE와 일치하는지 |
-| `bangs_length` | OUTPUT 앞머리 길이가 REFERENCE와 일치하는지 |
-| `face_shape_preservation` | OUTPUT 얼굴 형태가 INPUT과 동일한지 |
-| `face_color_preservation` | OUTPUT 얼굴/피부 색상이 INPUT과 동일한지 |
+| `hair_sharpness_vs_reference` | OUTPUT 헤어 선명도가 REFERENCE와 비교하여 유사한지 |
+| `hair_detail` | OUTPUT 헤어의 세밀한 디테일 표현 수준 |
+| `naturalness` | 헤어 편집이 자연스럽게 보이는지 |
 
 ## 6. 출력 파일
 
