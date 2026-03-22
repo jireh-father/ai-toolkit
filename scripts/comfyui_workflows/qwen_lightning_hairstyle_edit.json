@@ -2,8 +2,8 @@
   "3": {
     "inputs": {
       "seed": 183311042503565,
-      "steps": 30,
-      "cfg": 2,
+      "steps": 6,
+      "cfg": 1,
       "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1,
@@ -152,7 +152,7 @@
   },
   "132": {
     "inputs": {
-      "unet_name": "Qwen-Image-Edit-2511-FP8_e4m3fn.safetensors",
+      "unet_name": "qwen_image_edit_2511_fp8_e4m3fn_scaled_lightning_comfyui_4steps_v1.0.safetensors",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",

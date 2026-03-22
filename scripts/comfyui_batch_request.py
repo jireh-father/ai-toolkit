@@ -558,6 +558,8 @@ def batch_request_qwen_hairstyle_edit(
     
     return results
 
+batch_request_qwen_lightning_hairstyle_edit = batch_request_qwen_hairstyle_edit
+
 
 def batch_request_to_comfyui(
     image_dir: str,
@@ -673,7 +675,7 @@ def main():
         '--workflow_type',
         type=str,
         default='random_face_change',
-        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change', 'qwen_hairstyle_edit'],
+        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change', 'qwen_hairstyle_edit', 'qwen_lightning_hairstyle_edit'],
         help='워크플로우 타입 (기본값: random_face_change)'
     )
     
