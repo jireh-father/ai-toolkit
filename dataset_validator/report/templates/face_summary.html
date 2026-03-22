@@ -238,6 +238,9 @@ function metricClass(mae) {
 
 function buildImagePath(dir, filename) {
   const base = dir.replace(/\\/g, '/');
+  if (IMAGE_DIRS._relative) {
+    return base + '/' + filename;
+  }
   return 'file:///' + base + '/' + filename;
 }
 

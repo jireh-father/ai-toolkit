@@ -199,9 +199,10 @@ function scoreClass(v) {
 }
 
 function buildImagePath(dir, filename) {
-  // Convert backslash to forward slash for file:// URL
   const base = dir.replace(/\\/g, '/');
-  // Strip extension from filename to get stem, then find matching file
+  if (IMAGE_DIRS._relative) {
+    return base + '/' + filename;
+  }
   return 'file:///' + base + '/' + filename;
 }
 

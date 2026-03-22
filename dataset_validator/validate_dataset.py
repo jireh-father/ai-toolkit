@@ -376,11 +376,12 @@ def main():
 
         logger.info(f"Copied {copied_count} images to {report_images_dir}")
 
-        # Update image_dirs to point to copied images
+        # Update image_dirs to use relative paths from report_dir
         image_dirs = {
-            "input": str(report_images_dir.resolve() / "input"),
-            "reference": str(report_images_dir.resolve() / "reference"),
-            "output": str(report_images_dir.resolve() / "output"),
+            "input": "images/input",
+            "reference": "images/reference",
+            "output": "images/output",
+            "_relative": True,
         }
 
     report_paths = generate_all_reports(
