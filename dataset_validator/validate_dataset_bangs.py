@@ -12,7 +12,7 @@ Usage:
         --report-dir ./reports_bangs
 """
 
-import dataset_validator.core.evaluator as evaluator
+import core.evaluator as evaluator
 
 # Override the evaluation prompt with bangs-focused version
 # All score fields remain the same (14 fields), but the prompt emphasizes bangs evaluation
