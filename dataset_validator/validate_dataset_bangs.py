@@ -69,7 +69,7 @@ Respond with ONLY a JSON object, no other text:
 {"hair_similarity_overall":<0-10>,"hair_color":<0-10>,"hair_length":<0-10>,"hair_texture":<0-10>,"hair_shape":<0-10>,"bangs_shape":<0-10>,"bangs_length":<0-10>,"hair_sharpness_vs_input":<0-10>,"hair_sharpness_vs_reference":<0-10>,"hair_detail":<0-10>,"non_hair_preservation":<0-10>,"naturalness":<0-10>,"face_shape_preservation":<0-10>,"face_color_preservation":<0-10>,"reason":"<1-2 sentences focusing especially on bangs quality>"}"""
 
 # Import and run the same main() from validate_dataset
-from dataset_validator.validate_dataset import main
+from validate_dataset import main
 
 if __name__ == "__main__":
     main()
