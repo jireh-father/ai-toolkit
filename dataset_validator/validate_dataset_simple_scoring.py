@@ -735,14 +735,14 @@ def _generate_scoring_html(results, metadata, image_dirs, output_path):
       <div class="stat-label">median: {metadata['median_score']}</div>
     </div>
     <div class="card">
-      <h3>Passed (>= {threshold})</h3>
-      <div class="stat-big color-pass">{metadata['passed']}</div>
-      <div class="stat-label">{metadata['pass_rate']}%</div>
+      <h3 id="passedLabel">Passed (>= {threshold})</h3>
+      <div class="stat-big color-pass" id="passedCount">{metadata['passed']}</div>
+      <div class="stat-label" id="passedRate">{metadata['pass_rate']}%</div>
     </div>
     <div class="card">
-      <h3>Failed (< {threshold})</h3>
-      <div class="stat-big color-fail">{metadata['failed']}</div>
-      <div class="stat-label">{round(100 - metadata['pass_rate'], 1)}%</div>
+      <h3 id="failedLabel">Failed (< {threshold})</h3>
+      <div class="stat-big color-fail" id="failedCount">{metadata['failed']}</div>
+      <div class="stat-label" id="failedRate">{round(100 - metadata['pass_rate'], 1)}%</div>
     </div>
     {"<div class='card'><h3>Errors</h3><div class='stat-big' style='color:#f39c12'>" + str(metadata['errors']) + "</div></div>" if metadata.get('errors', 0) > 0 else ""}
   </div>
@@ -766,6 +766,37 @@ def _generate_scoring_html(results, metadata, image_dirs, output_path):
       <label for="filterPass">Passed</label>
       <input type="radio" id="filterFail" name="filter" value="fail" onchange="applyFilter()">
       <label for="filterFail">Failed</label>
+    </div>
+    <div>
+      <label>Score: </label>
+      <select id="scoreFilter" onchange="applyFilter()">
+        <option value="all">All</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+      </select>
+    </div>
+    <div>
+      <label>Threshold: </label>
+      <select id="thresholdSelect" onchange="onThresholdChange()">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7" selected>7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+      </select>
     </div>
     <div>
       <label>Search: </label>
@@ -792,23 +823,57 @@ def _generate_scoring_html(results, metadata, image_dirs, output_path):
 <script>
 const RESULTS = {results_json};
 const IMAGE_DIRS = {image_dirs_json};
-const THRESHOLD = {threshold};
+let currentThreshold = {threshold};
 
 const distLabels = {dist_labels};
 const distValues = {dist_values};
-const barColors = distLabels.map((l, i) => parseInt(l) >= THRESHOLD ? '#2ecc71' : '#e74c3c');
 
-new Chart(document.getElementById('barChart'), {{
+// Bar chart
+const barChart = new Chart(document.getElementById('barChart'), {{
   type: 'bar',
-  data: {{ labels: distLabels, datasets: [{{ label: 'Count', data: distValues, backgroundColor: barColors }}] }},
+  data: {{ labels: distLabels, datasets: [{{ label: 'Count', data: distValues, backgroundColor: distLabels.map(l => parseInt(l) >= currentThreshold ? '#2ecc71' : '#e74c3c') }}] }},
   options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }}, scales: {{ y: {{ beginAtZero: true, ticks: {{ stepSize: 1 }} }} }} }}
 }});
 
-new Chart(document.getElementById('pieChart'), {{
+// Pie chart
+const validScores = RESULTS.filter(r => r.score !== null).map(r => r.score);
+const pieChart = new Chart(document.getElementById('pieChart'), {{
   type: 'doughnut',
-  data: {{ labels: ['Passed', 'Failed'], datasets: [{{ data: [{metadata['passed']}, {metadata['failed']}], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
+  data: {{ labels: ['Passed', 'Failed'], datasets: [{{ data: [0, 0], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
   options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
 }});
+
+// Set initial threshold selector
+document.getElementById('thresholdSelect').value = currentThreshold;
+
+function recalcStats() {{
+  const passed = validScores.filter(s => s >= currentThreshold).length;
+  const failed = validScores.filter(s => s < currentThreshold).length;
+  const passRate = validScores.length > 0 ? (passed / validScores.length * 100).toFixed(1) : '0.0';
+  const failRate = validScores.length > 0 ? (100 - parseFloat(passRate)).toFixed(1) : '0.0';
+
+  // Update dashboard cards
+  document.getElementById('passedCount').textContent = passed;
+  document.getElementById('passedRate').textContent = passRate + '%';
+  document.getElementById('passedLabel').textContent = 'Passed (>= ' + currentThreshold + ')';
+  document.getElementById('failedCount').textContent = failed;
+  document.getElementById('failedRate').textContent = failRate + '%';
+  document.getElementById('failedLabel').textContent = 'Failed (< ' + currentThreshold + ')';
+
+  // Update bar chart colors
+  barChart.data.datasets[0].backgroundColor = distLabels.map(l => parseInt(l) >= currentThreshold ? '#2ecc71' : '#e74c3c');
+  barChart.update();
+
+  // Update pie chart
+  pieChart.data.datasets[0].data = [passed, failed];
+  pieChart.update();
+}}
+
+function onThresholdChange() {{
+  currentThreshold = parseInt(document.getElementById('thresholdSelect').value);
+  recalcStats();
+  applyFilter();
+}}
 
 const PAGE_SIZE = 10;
 let filteredResults = [];
@@ -822,7 +887,7 @@ function buildImagePath(dir, filename) {{
 
 function scoreColor(score) {{
   if (score >= 8) return '#2ecc71';
-  if (score >= THRESHOLD) return '#27ae60';
+  if (score >= currentThreshold) return '#27ae60';
   if (score >= 5) return '#f39c12';
   return '#e74c3c';
 }}
@@ -830,7 +895,7 @@ function scoreColor(score) {{
 function renderCard(item) {{
   const isError = item.error === true;
   const score = item.score;
-  const passed = score !== null && score >= THRESHOLD;
+  const passed = score !== null && score >= currentThreshold;
   let badge;
   if (isError) badge = '<span class="sample-badge badge-error">ERROR</span>';
   else if (passed) badge = '<span class="sample-badge badge-pass">PASS</span>';
@@ -874,11 +939,13 @@ function loadMore() {{
 function applyFilter() {{
   const search = document.getElementById('searchInput').value.toLowerCase();
   const filter = document.querySelector('input[name="filter"]:checked').value;
+  const scoreFilterVal = document.getElementById('scoreFilter').value;
   const sortBy = document.getElementById('sortSelect').value;
 
   filteredResults = RESULTS.filter(r => {{
-    if (filter === 'pass' && (r.score === null || r.score < THRESHOLD)) return false;
-    if (filter === 'fail' && (r.score === null || r.score >= THRESHOLD)) return false;
+    if (filter === 'pass' && (r.score === null || r.score < currentThreshold)) return false;
+    if (filter === 'fail' && (r.score === null || r.score >= currentThreshold)) return false;
+    if (scoreFilterVal !== 'all' && r.score !== parseInt(scoreFilterVal)) return false;
     if (search && !r.filename.toLowerCase().includes(search)) return false;
     return true;
   }});
@@ -903,6 +970,7 @@ new IntersectionObserver(entries => {{
   if (entries[0].isIntersecting) loadMore();
 }}, {{ rootMargin: '400px 0px' }}).observe(sentinel);
 
+recalcStats();
 applyFilter();
 </script>
 </body>
