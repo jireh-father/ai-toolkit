@@ -1,15 +1,14 @@
-"""Simple hairstyle match validator (REFERENCE vs OUTPUT only).
+"""Hairstyle similarity scoring validator (REFERENCE vs OUTPUT only).
 
-Compares reference and output images to determine if hairstyles are
-identical, considering camera angle differences. Returns true/false
-per sample with a reason.
+Compares reference and output images and scores hairstyle similarity
+on a 1-10 scale, considering camera angle differences.
 
 Usage:
-    python dataset_validator/validate_dataset_simple.py \
+    python dataset_validator/validate_dataset_simple_scoring.py \
         --reference-dir ./data/reference \
         --output-dir ./data/output \
         --model qwen3-vl-8b \
-        --report-dir ./reports_simple
+        --report-dir ./reports_simple_scoring
 """
 
 import argparse
@@ -29,7 +28,7 @@ from PIL import Image
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
 
-SIMPLE_PROMPT = """You are a strict hairstyle comparison expert.
+SCORING_PROMPT = """You are a strict hairstyle comparison expert.
 
 Above you see two images: [REFERENCE] and [OUTPUT].
 - REFERENCE = the target hairstyle.
@@ -37,12 +36,12 @@ Above you see two images: [REFERENCE] and [OUTPUT].
 
 The two images may have different camera angles, lighting, or show different people. Ignore these differences. Focus ONLY on the hairstyle itself.
 
-TASK: Determine whether OUTPUT's hairstyle is IDENTICAL to REFERENCE's hairstyle in every detail.
+TASK: Score how well OUTPUT's hairstyle matches REFERENCE's hairstyle on a 1-10 scale.
 
-Compare ALL of the following aspects with extreme scrutiny:
+Compare ALL of the following aspects carefully:
 - Overall hairstyle shape and silhouette
 - Hair color (including highlights, roots, gradient, tone)
-- Hair length (short, medium, long — exact match required)
+- Hair length (short, medium, long)
 - Hair texture (straight, wavy, curly, permed)
 - Hair volume and layering
 - Parting direction and style
@@ -50,11 +49,18 @@ Compare ALL of the following aspects with extreme scrutiny:
 - Flow direction and styling
 - Hair detail quality (strand-level detail, flyaway hairs, natural layering)
 
-If ANY of these aspects differs — even slightly — answer false.
-Only answer true if the hairstyle is a near-perfect match across ALL aspects.
+SCORING GUIDE (be honest, not generous):
+- 1-2: Completely different hairstyle (wrong style, color, and length)
+- 3-4: Major differences (e.g. correct color but wrong length/style, or correct style but wrong color)
+- 5: Partially similar but with multiple obvious differences
+- 6: Recognizably similar style with notable flaws (e.g. color tone off, volume mismatch, texture difference)
+- 7: Good match with minor differences (e.g. slight color shift, small shape deviation)
+- 8: Very good match, only subtle differences visible on close inspection
+- 9: Near perfect, almost indistinguishable hairstyle
+- 10: Perfect match in every aspect (extremely rare)
 
 Respond with ONLY a JSON object, no other text:
-{"match": true or false, "reason": "<1-2 sentences explaining your decision>"}"""
+{"score": <1-10>, "reason": "<1-2 sentences explaining your score>"}"""
 
 
 def setup_logging(level: str):
@@ -81,21 +87,25 @@ def set_seed(seed: int):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Simple Hair Match Validator (REFERENCE vs OUTPUT)",
+        description="Hairstyle Similarity Scoring Validator (REFERENCE vs OUTPUT)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Basic usage
-  python dataset_validator/validate_dataset_simple.py \\
+  python dataset_validator/validate_dataset_simple_scoring.py \\
       --reference-dir ./ref --output-dir ./output
 
+  # With pass threshold
+  python dataset_validator/validate_dataset_simple_scoring.py \\
+      --reference-dir ./ref --output-dir ./output --threshold 7
+
   # Ollama backend
-  python dataset_validator/validate_dataset_simple.py \\
+  python dataset_validator/validate_dataset_simple_scoring.py \\
       --reference-dir ./ref --output-dir ./output \\
       --model qwen3.5-9b --backend ollama
 
   # Debug with 5 samples
-  python dataset_validator/validate_dataset_simple.py \\
+  python dataset_validator/validate_dataset_simple_scoring.py \\
       --reference-dir ./ref --output-dir ./output \\
       --max-samples 5 --log-level debug
 """,
@@ -120,13 +130,17 @@ Examples:
     parser.add_argument("--vllm-url", type=str, default="http://localhost:8000")
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434")
 
+    # Threshold settings
+    parser.add_argument("--threshold", type=int, default=7,
+                        help="Pass threshold score (1-10, default: 7)")
+
     # Output settings
-    parser.add_argument("--report-dir", type=str, default="./reports_simple")
+    parser.add_argument("--report-dir", type=str, default="./reports_simple_scoring")
     parser.add_argument("--copy-images", action="store_true",
                         help="Copy images to report-dir/images/")
 
     # Checkpoint settings
-    parser.add_argument("--checkpoint-dir", type=str, default="./checkpoints_simple")
+    parser.add_argument("--checkpoint-dir", type=str, default="./checkpoints_simple_scoring")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--checkpoint-interval", type=int, default=100)
 
@@ -220,7 +234,7 @@ def load_image_pair(entry: dict, short_side: int = 512):
 
 
 # ---------------------------------------------------------------------------
-# Evaluation (2-image, true/false)
+# Evaluation (2-image, score 1-10)
 # ---------------------------------------------------------------------------
 
 def _parse_json_response(text: str) -> Optional[dict]:
@@ -252,22 +266,23 @@ def _parse_json_response(text: str) -> Optional[dict]:
     return None
 
 
-def _validate_simple_response(data: dict) -> Optional[dict]:
-    """Validate true/false response."""
+def _validate_scoring_response(data: dict) -> Optional[dict]:
+    """Validate score response: score must be int 1-10."""
     if not isinstance(data, dict):
         return None
-    match_val = data.get("match")
-    if match_val is None:
+    score_val = data.get("score")
+    if score_val is None:
         return None
-    if isinstance(match_val, bool):
-        return {"match": match_val, "reason": str(data.get("reason", ""))}
-    if isinstance(match_val, str):
-        lower = match_val.lower().strip()
-        if lower in ("true", "yes", "1"):
-            return {"match": True, "reason": str(data.get("reason", ""))}
-        if lower in ("false", "no", "0"):
-            return {"match": False, "reason": str(data.get("reason", ""))}
-    return None
+    try:
+        score = int(score_val)
+    except (ValueError, TypeError):
+        try:
+            score = int(float(score_val))
+        except (ValueError, TypeError):
+            return None
+    if not (1 <= score <= 10):
+        return None
+    return {"score": score, "reason": str(data.get("reason", ""))}
 
 
 def _build_messages_2img_qwen(images, prompt):
@@ -296,8 +311,8 @@ def _build_messages_2img_generic(images, prompt):
     }]
 
 
-def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
-    """Evaluate a single reference/output pair. Returns {"match": bool, "reason": str} or None."""
+def evaluate_single_scoring(vlm: dict, images, max_retries: int = 3):
+    """Evaluate a single reference/output pair. Returns {"score": int, "reason": str} or None."""
     import torch
 
     model = vlm["model"]
@@ -310,7 +325,7 @@ def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
         generated_ids = None
         try:
             if family in ("qwen2_vl", "qwen3_5"):
-                messages = _build_messages_2img_qwen(images, SIMPLE_PROMPT)
+                messages = _build_messages_2img_qwen(images, SCORING_PROMPT)
                 from qwen_vl_utils import process_vision_info
                 text = processor.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True
@@ -321,7 +336,7 @@ def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
                     padding=True, return_tensors="pt",
                 ).to(model.device)
             else:
-                messages = _build_messages_2img_generic(images, SIMPLE_PROMPT)
+                messages = _build_messages_2img_generic(images, SCORING_PROMPT)
                 text = processor.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True
                 )
@@ -349,7 +364,7 @@ def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
                 logger.warning(f"JSON parse failed (attempt {attempt + 1}/{max_retries})")
                 continue
 
-            validated = _validate_simple_response(parsed)
+            validated = _validate_scoring_response(parsed)
             if validated is None:
                 logger.warning(f"Response validation failed (attempt {attempt + 1}/{max_retries})")
                 continue
@@ -368,7 +383,7 @@ def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
     return None
 
 
-def _evaluate_single_vllm_simple(vllm_url, model_id, images, max_retries=3):
+def _evaluate_single_vllm_scoring(vllm_url, model_id, images, max_retries=3):
     """Evaluate via vLLM API with 2 images."""
     import base64
     import io
@@ -388,7 +403,7 @@ def _evaluate_single_vllm_simple(vllm_url, model_id, images, max_retries=3):
             {"type": "image_url", "image_url": {"url": _img_to_b64(images[0])}},
             {"type": "text", "text": "[OUTPUT] Result image:"},
             {"type": "image_url", "image_url": {"url": _img_to_b64(images[1])}},
-            {"type": "text", "text": SIMPLE_PROMPT},
+            {"type": "text", "text": SCORING_PROMPT},
         ],
     }]
 
@@ -405,7 +420,7 @@ def _evaluate_single_vllm_simple(vllm_url, model_id, images, max_retries=3):
             logger.debug(f"vLLM response (attempt {attempt + 1}): {response_text[:200]}")
             parsed = _parse_json_response(response_text)
             if parsed:
-                validated = _validate_simple_response(parsed)
+                validated = _validate_scoring_response(parsed)
                 if validated:
                     return validated
             logger.warning(f"Parse/validation failed (attempt {attempt + 1}/{max_retries})")
@@ -414,7 +429,7 @@ def _evaluate_single_vllm_simple(vllm_url, model_id, images, max_retries=3):
     return None
 
 
-def _evaluate_single_ollama_simple(ollama_url, model_name, images, max_retries=3):
+def _evaluate_single_ollama_scoring(ollama_url, model_name, images, max_retries=3):
     """Evaluate via Ollama API with 2 images."""
     import base64
     import io
@@ -423,7 +438,6 @@ def _evaluate_single_ollama_simple(ollama_url, model_name, images, max_retries=3
 
     logger = logging.getLogger(__name__)
 
-    # Resolve ollama tag
     config_path = Path(__file__).parent / "config" / "models.yaml"
     ollama_tag = model_name
     try:
@@ -446,7 +460,7 @@ def _evaluate_single_ollama_simple(ollama_url, model_name, images, max_retries=3
             {"type": "image_url", "image_url": {"url": _img_to_b64(images[0])}},
             {"type": "text", "text": "[OUTPUT] Result image:"},
             {"type": "image_url", "image_url": {"url": _img_to_b64(images[1])}},
-            {"type": "text", "text": SIMPLE_PROMPT},
+            {"type": "text", "text": SCORING_PROMPT},
         ],
     }]
 
@@ -463,7 +477,7 @@ def _evaluate_single_ollama_simple(ollama_url, model_name, images, max_retries=3
             logger.debug(f"Ollama response (attempt {attempt + 1}): {response_text[:200]}")
             parsed = _parse_json_response(response_text)
             if parsed:
-                validated = _validate_simple_response(parsed)
+                validated = _validate_scoring_response(parsed)
                 if validated:
                     return validated
             logger.warning(f"Parse/validation failed (attempt {attempt + 1}/{max_retries})")
@@ -475,6 +489,18 @@ def _evaluate_single_ollama_simple(ollama_url, model_name, images, max_retries=3
 # ---------------------------------------------------------------------------
 # Evaluation runner
 # ---------------------------------------------------------------------------
+
+def _make_result(entry, score, reason, error):
+    """Build a result dict with file names."""
+    return {
+        "filename": entry["stem"],
+        "reference_file": Path(entry["reference"]).name,
+        "output_file": Path(entry["output"]).name,
+        "score": score,
+        "reason": reason,
+        "error": error,
+    }
+
 
 def run_evaluation(entries, args):
     """Run evaluation on all entries."""
@@ -494,35 +520,17 @@ def run_evaluation(entries, args):
         for entry in pbar:
             pair = load_image_pair(entry, short_side=args.resize_short_side)
             if pair is None:
-                results.append({
-                    "filename": entry["stem"],
-                    "reference_file": Path(entry["reference"]).name,
-                    "output_file": Path(entry["output"]).name,
-                    "match": None,
-                    "reason": "Failed to load images", "error": True,
-                })
+                results.append(_make_result(entry, None, "Failed to load images", True))
             else:
-                resp = evaluate_single_simple(vlm, pair, max_retries=3)
+                resp = evaluate_single_scoring(vlm, pair, max_retries=3)
                 if resp is None:
-                    results.append({
-                        "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": None,
-                        "reason": "VLM evaluation failed", "error": True,
-                    })
+                    results.append(_make_result(entry, None, "VLM evaluation failed", True))
                 else:
-                    results.append({
-                        "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": resp["match"],
-                        "reason": resp["reason"],
-                        "error": False,
-                    })
+                    results.append(_make_result(entry, resp["score"], resp["reason"], False))
+            scores = [r["score"] for r in results if r["score"] is not None]
             pbar.set_postfix(
                 done=len(results),
-                matched=sum(1 for r in results if r.get("match") is True),
+                avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
             )
 
     elif args.backend == "vllm":
@@ -538,35 +546,17 @@ def run_evaluation(entries, args):
         for entry in pbar:
             pair = load_image_pair(entry, short_side=args.resize_short_side)
             if pair is None:
-                results.append({
-                    "filename": entry["stem"],
-                    "reference_file": Path(entry["reference"]).name,
-                    "output_file": Path(entry["output"]).name,
-                    "match": None,
-                    "reason": "Failed to load images", "error": True,
-                })
+                results.append(_make_result(entry, None, "Failed to load images", True))
             else:
-                resp = _evaluate_single_vllm_simple(args.vllm_url, hf_id, pair)
+                resp = _evaluate_single_vllm_scoring(args.vllm_url, hf_id, pair)
                 if resp is None:
-                    results.append({
-                        "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": None,
-                        "reason": "vLLM evaluation failed", "error": True,
-                    })
+                    results.append(_make_result(entry, None, "vLLM evaluation failed", True))
                 else:
-                    results.append({
-                        "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": resp["match"],
-                        "reason": resp["reason"],
-                        "error": False,
-                    })
+                    results.append(_make_result(entry, resp["score"], resp["reason"], False))
+            scores = [r["score"] for r in results if r["score"] is not None]
             pbar.set_postfix(
                 done=len(results),
-                matched=sum(1 for r in results if r.get("match") is True),
+                avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
             )
 
     elif args.backend == "ollama":
@@ -579,62 +569,57 @@ def run_evaluation(entries, args):
         for entry in pbar:
             pair = load_image_pair(entry, short_side=args.resize_short_side)
             if pair is None:
-                results.append({
-                    "filename": entry["stem"],
-                    "reference_file": Path(entry["reference"]).name,
-                    "output_file": Path(entry["output"]).name,
-                    "match": None,
-                    "reason": "Failed to load images", "error": True,
-                })
+                results.append(_make_result(entry, None, "Failed to load images", True))
             else:
-                resp = _evaluate_single_ollama_simple(
+                resp = _evaluate_single_ollama_scoring(
                     args.ollama_url, args.model, pair,
                 )
                 if resp is None:
-                    results.append({
-                        "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": None,
-                        "reason": "Ollama evaluation failed", "error": True,
-                    })
+                    results.append(_make_result(entry, None, "Ollama evaluation failed", True))
                 else:
-                    results.append({
-                        "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": resp["match"],
-                        "reason": resp["reason"],
-                        "error": False,
-                    })
+                    results.append(_make_result(entry, resp["score"], resp["reason"], False))
+            scores = [r["score"] for r in results if r["score"] is not None]
             pbar.set_postfix(
                 done=len(results),
-                matched=sum(1 for r in results if r.get("match") is True),
+                avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
             )
 
     return results
 
 
 # ---------------------------------------------------------------------------
-# Report generation (simple true/false)
+# Report generation (scoring)
 # ---------------------------------------------------------------------------
 
-def generate_simple_reports(results, metadata, entries_map, report_dir, image_dirs=None):
-    """Generate JSON, CSV, and HTML reports for simple match results."""
+def generate_scoring_reports(results, metadata, entries_map, report_dir,
+                             threshold=7, image_dirs=None):
+    """Generate JSON, CSV, and HTML reports for scoring results."""
     report_dir = Path(report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
+    valid_scores = [r["score"] for r in results if r["score"] is not None]
     total = len(results)
-    matched = sum(1 for r in results if r.get("match") is True)
-    unmatched = sum(1 for r in results if r.get("match") is False)
     errors = sum(1 for r in results if r.get("error"))
+    passed = sum(1 for s in valid_scores if s >= threshold)
+    failed = sum(1 for s in valid_scores if s < threshold)
+    avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0
+    median_score = sorted(valid_scores)[len(valid_scores) // 2] if valid_scores else 0
+
+    # Score distribution (1-10)
+    distribution = {i: 0 for i in range(1, 11)}
+    for s in valid_scores:
+        distribution[s] += 1
 
     metadata.update({
         "total_samples": total,
-        "matched": matched,
-        "unmatched": unmatched,
+        "passed": passed,
+        "failed": failed,
         "errors": errors,
-        "match_rate": round(matched / total * 100, 1) if total > 0 else 0,
+        "pass_rate": round(passed / len(valid_scores) * 100, 1) if valid_scores else 0,
+        "avg_score": avg_score,
+        "median_score": median_score,
+        "threshold": threshold,
+        "distribution": distribution,
     })
 
     # JSON report
@@ -646,39 +631,43 @@ def generate_simple_reports(results, metadata, entries_map, report_dir, image_di
     # CSV report
     csv_path = report_dir / "results.csv"
     with open(csv_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["filename", "match", "reason"])
+        writer = csv.DictWriter(f, fieldnames=["filename", "score", "reason"])
         writer.writeheader()
         for r in results:
             writer.writerow({
                 "filename": r["filename"],
-                "match": r.get("match", ""),
+                "score": r.get("score", ""),
                 "reason": r.get("reason", ""),
             })
 
     # HTML report
     html_path = report_dir / "summary.html"
-    _generate_simple_html(results, metadata, image_dirs, html_path)
+    _generate_scoring_html(results, metadata, image_dirs, html_path)
 
     logging.getLogger(__name__).info(f"Reports saved to {report_dir}")
     return {"json": json_path, "csv": csv_path, "html": html_path, "metadata": metadata}
 
 
-def _generate_simple_html(results, metadata, image_dirs, output_path):
-    """Generate a self-contained HTML report for simple match results."""
+def _generate_scoring_html(results, metadata, image_dirs, output_path):
+    """Generate a self-contained HTML report for scoring results."""
     elapsed = metadata.get("elapsed_time_sec", 0)
     hours, remainder = divmod(int(elapsed), 3600)
     minutes, seconds = divmod(remainder, 60)
     elapsed_str = f"{hours}h {minutes}m {seconds}s"
+    threshold = metadata.get("threshold", 7)
 
     results_json = json.dumps(results, ensure_ascii=False)
     image_dirs_json = json.dumps(image_dirs or {}, ensure_ascii=False)
+    dist = metadata.get("distribution", {})
+    dist_labels = json.dumps([str(i) for i in range(1, 11)])
+    dist_values = json.dumps([dist.get(i, 0) for i in range(1, 11)])
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Simple Hair Match Report</title>
+<title>Hairstyle Similarity Scoring Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -687,16 +676,18 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
   h1 {{ text-align: center; margin-bottom: 10px; color: #1a1a2e; }}
   .meta {{ text-align: center; color: #666; margin-bottom: 30px; font-size: 14px; }}
 
-  .dashboard {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }}
+  .dashboard {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }}
   .card {{ background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
   .card h3 {{ margin-bottom: 12px; color: #1a1a2e; font-size: 16px; }}
   .stat-big {{ font-size: 48px; font-weight: 700; }}
   .stat-label {{ color: #666; font-size: 14px; }}
-  .color-match {{ color: #2ecc71; }}
-  .color-unmatch {{ color: #e74c3c; }}
+  .color-pass {{ color: #2ecc71; }}
+  .color-fail {{ color: #e74c3c; }}
+  .color-avg {{ color: #3498db; }}
 
-  .chart-row {{ display: grid; grid-template-columns: 1fr; gap: 20px; margin-bottom: 30px; max-width: 400px; margin-left: auto; margin-right: auto; }}
+  .chart-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }}
   .chart-card {{ background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
+  @media (max-width: 768px) {{ .chart-row {{ grid-template-columns: 1fr; }} }}
 
   .controls {{ background: #fff; border-radius: 12px; padding: 16px 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }}
   .controls input, .controls select {{ padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }}
@@ -711,9 +702,10 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
   .sample-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }}
   .sample-filename {{ font-weight: 600; font-size: 16px; }}
   .sample-badge {{ padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }}
-  .badge-match {{ background: #d4edda; color: #155724; }}
-  .badge-unmatch {{ background: #f8d7da; color: #721c24; }}
+  .badge-pass {{ background: #d4edda; color: #155724; }}
+  .badge-fail {{ background: #f8d7da; color: #721c24; }}
   .badge-error {{ background: #fff3cd; color: #856404; }}
+  .score-display {{ font-size: 28px; font-weight: 700; margin-right: 8px; }}
   .image-row {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }}
   .image-col {{ text-align: center; }}
   .image-col img {{ width: 100%; border-radius: 8px; border: 1px solid #eee; min-height: 150px; background: #f0f0f0; }}
@@ -724,9 +716,10 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
 </head>
 <body>
 <div class="container">
-  <h1>Simple Hair Match Report</h1>
+  <h1>Hairstyle Similarity Scoring Report</h1>
   <div class="meta">
     Model: {metadata.get('model', '')} |
+    Threshold: {threshold} |
     Generated: {metadata.get('timestamp', '')} |
     Duration: {elapsed_str}
   </div>
@@ -737,21 +730,30 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
       <div class="stat-big">{metadata['total_samples']}</div>
     </div>
     <div class="card">
-      <h3>Matched</h3>
-      <div class="stat-big color-match">{metadata['matched']}</div>
-      <div class="stat-label">{metadata['match_rate']}%</div>
+      <h3>Avg Score</h3>
+      <div class="stat-big color-avg">{metadata['avg_score']}</div>
+      <div class="stat-label">median: {metadata['median_score']}</div>
     </div>
     <div class="card">
-      <h3>Unmatched</h3>
-      <div class="stat-big color-unmatch">{metadata['unmatched']}</div>
-      <div class="stat-label">{round(100 - metadata['match_rate'], 1)}%</div>
+      <h3>Passed (>= {threshold})</h3>
+      <div class="stat-big color-pass">{metadata['passed']}</div>
+      <div class="stat-label">{metadata['pass_rate']}%</div>
+    </div>
+    <div class="card">
+      <h3>Failed (< {threshold})</h3>
+      <div class="stat-big color-fail">{metadata['failed']}</div>
+      <div class="stat-label">{round(100 - metadata['pass_rate'], 1)}%</div>
     </div>
     {"<div class='card'><h3>Errors</h3><div class='stat-big' style='color:#f39c12'>" + str(metadata['errors']) + "</div></div>" if metadata.get('errors', 0) > 0 else ""}
   </div>
 
   <div class="chart-row">
     <div class="chart-card">
-      <h3>Match / Unmatch Ratio</h3>
+      <h3>Score Distribution</h3>
+      <canvas id="barChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Pass / Fail</h3>
       <canvas id="pieChart"></canvas>
     </div>
   </div>
@@ -760,10 +762,10 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
     <div class="radio-group">
       <input type="radio" id="filterAll" name="filter" value="all" checked onchange="applyFilter()">
       <label for="filterAll">All</label>
-      <input type="radio" id="filterMatch" name="filter" value="match" onchange="applyFilter()">
-      <label for="filterMatch">Matched</label>
-      <input type="radio" id="filterUnmatch" name="filter" value="unmatch" onchange="applyFilter()">
-      <label for="filterUnmatch">Unmatched</label>
+      <input type="radio" id="filterPass" name="filter" value="pass" onchange="applyFilter()">
+      <label for="filterPass">Passed</label>
+      <input type="radio" id="filterFail" name="filter" value="fail" onchange="applyFilter()">
+      <label for="filterFail">Failed</label>
     </div>
     <div>
       <label>Search: </label>
@@ -772,10 +774,10 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
     <div>
       <label>Sort: </label>
       <select id="sortSelect" onchange="applyFilter()">
-        <option value="name-asc">Filename (A → Z)</option>
-        <option value="name-desc">Filename (Z → A)</option>
-        <option value="unmatch-first">Unmatched first</option>
-        <option value="match-first">Matched first</option>
+        <option value="score-asc">Score (low -> high)</option>
+        <option value="score-desc">Score (high -> low)</option>
+        <option value="name-asc">Filename (A -> Z)</option>
+        <option value="name-desc">Filename (Z -> A)</option>
       </select>
     </div>
   </div>
@@ -790,12 +792,21 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
 <script>
 const RESULTS = {results_json};
 const IMAGE_DIRS = {image_dirs_json};
-const matchCount = {metadata['matched']};
-const unmatchCount = {metadata['unmatched']};
+const THRESHOLD = {threshold};
+
+const distLabels = {dist_labels};
+const distValues = {dist_values};
+const barColors = distLabels.map((l, i) => parseInt(l) >= THRESHOLD ? '#2ecc71' : '#e74c3c');
+
+new Chart(document.getElementById('barChart'), {{
+  type: 'bar',
+  data: {{ labels: distLabels, datasets: [{{ label: 'Count', data: distValues, backgroundColor: barColors }}] }},
+  options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }}, scales: {{ y: {{ beginAtZero: true, ticks: {{ stepSize: 1 }} }} }} }}
+}});
 
 new Chart(document.getElementById('pieChart'), {{
   type: 'doughnut',
-  data: {{ labels: ['Matched', 'Unmatched'], datasets: [{{ data: [matchCount, unmatchCount], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
+  data: {{ labels: ['Passed', 'Failed'], datasets: [{{ data: [{metadata['passed']}, {metadata['failed']}], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
   options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
 }});
 
@@ -809,13 +820,25 @@ function buildImagePath(dir, filename) {{
   return 'file:///' + base + '/' + filename;
 }}
 
+function scoreColor(score) {{
+  if (score >= 8) return '#2ecc71';
+  if (score >= THRESHOLD) return '#27ae60';
+  if (score >= 5) return '#f39c12';
+  return '#e74c3c';
+}}
+
 function renderCard(item) {{
-  const isMatch = item.match === true;
   const isError = item.error === true;
+  const score = item.score;
+  const passed = score !== null && score >= THRESHOLD;
   let badge;
   if (isError) badge = '<span class="sample-badge badge-error">ERROR</span>';
-  else if (isMatch) badge = '<span class="sample-badge badge-match">MATCH</span>';
-  else badge = '<span class="sample-badge badge-unmatch">UNMATCH</span>';
+  else if (passed) badge = '<span class="sample-badge badge-pass">PASS</span>';
+  else badge = '<span class="sample-badge badge-fail">FAIL</span>';
+
+  const scoreHtml = score !== null
+    ? `<span class="score-display" style="color:${{scoreColor(score)}}">${{score}}</span>`
+    : '';
 
   let imagesHtml = '';
   if (IMAGE_DIRS.reference && IMAGE_DIRS.output) {{
@@ -828,7 +851,7 @@ function renderCard(item) {{
   const reasonHtml = item.reason ? `<div class="reason-text">${{item.reason}}</div>` : '';
 
   return `<div class="sample-card">
-    <div class="sample-header"><span class="sample-filename">${{item.filename}}</span>${{badge}}</div>
+    <div class="sample-header"><span class="sample-filename">${{item.filename}}</span><div>${{scoreHtml}}${{badge}}</div></div>
     ${{imagesHtml}}${{reasonHtml}}
   </div>`;
 }}
@@ -854,17 +877,19 @@ function applyFilter() {{
   const sortBy = document.getElementById('sortSelect').value;
 
   filteredResults = RESULTS.filter(r => {{
-    if (filter === 'match' && r.match !== true) return false;
-    if (filter === 'unmatch' && r.match !== false) return false;
+    if (filter === 'pass' && (r.score === null || r.score < THRESHOLD)) return false;
+    if (filter === 'fail' && (r.score === null || r.score >= THRESHOLD)) return false;
     if (search && !r.filename.toLowerCase().includes(search)) return false;
     return true;
   }});
 
   filteredResults.sort((a, b) => {{
+    const sa = a.score === null ? -1 : a.score;
+    const sb = b.score === null ? -1 : b.score;
+    if (sortBy === 'score-asc') return sa - sb;
+    if (sortBy === 'score-desc') return sb - sa;
     if (sortBy === 'name-asc') return a.filename.localeCompare(b.filename);
     if (sortBy === 'name-desc') return b.filename.localeCompare(a.filename);
-    if (sortBy === 'unmatch-first') return (a.match === true ? 1 : 0) - (b.match === true ? 1 : 0);
-    if (sortBy === 'match-first') return (a.match === true ? 0 : 1) - (b.match === true ? 0 : 1);
     return 0;
   }});
 
@@ -898,7 +923,7 @@ def main():
 
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
-    logger.info("Simple Hair Match Validator (REFERENCE vs OUTPUT)")
+    logger.info("Hairstyle Similarity Scoring Validator (REFERENCE vs OUTPUT)")
     logger.info("=" * 60)
 
     # Ensure package is importable
@@ -996,9 +1021,10 @@ def main():
             "_relative": True,
         }
 
-    report_paths = generate_simple_reports(
+    report_paths = generate_scoring_reports(
         results, metadata, entries_map,
         report_dir=Path(args.report_dir),
+        threshold=args.threshold,
         image_dirs=image_dirs,
     )
 
@@ -1015,12 +1041,14 @@ def main():
     meta = report_paths["metadata"]
     logger.info("=" * 60)
     logger.info("Validation Complete!")
-    logger.info(f"  Total:     {meta['total_samples']}")
-    logger.info(f"  Matched:   {meta['matched']} ({meta['match_rate']}%)")
-    logger.info(f"  Unmatched: {meta['unmatched']}")
+    logger.info(f"  Total:      {meta['total_samples']}")
+    logger.info(f"  Avg Score:  {meta['avg_score']} (median: {meta['median_score']})")
+    logger.info(f"  Passed:     {meta['passed']} ({meta['pass_rate']}%)")
+    logger.info(f"  Failed:     {meta['failed']}")
     if meta.get("errors", 0) > 0:
-        logger.info(f"  Errors:    {meta['errors']}")
-    logger.info(f"  Reports:   {Path(args.report_dir).resolve()}")
+        logger.info(f"  Errors:     {meta['errors']}")
+    logger.info(f"  Threshold:  {meta['threshold']}")
+    logger.info(f"  Reports:    {Path(args.report_dir).resolve()}")
     logger.info("=" * 60)
 
 

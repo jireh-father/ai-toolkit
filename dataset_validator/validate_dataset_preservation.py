@@ -1,15 +1,15 @@
-"""Simple hairstyle match validator (REFERENCE vs OUTPUT only).
+"""Non-hair preservation validator (INPUT vs OUTPUT only).
 
-Compares reference and output images to determine if hairstyles are
-identical, considering camera angle differences. Returns true/false
-per sample with a reason.
+Compares input and output images to determine if non-hair features
+(face, body, background, clothing, etc.) are properly preserved
+after hair transfer. Returns true/false per sample with a reason.
 
 Usage:
-    python dataset_validator/validate_dataset_simple.py \
-        --reference-dir ./data/reference \
+    python dataset_validator/validate_dataset_preservation.py \
+        --input-dir ./data/input \
         --output-dir ./data/output \
         --model qwen3-vl-8b \
-        --report-dir ./reports_simple
+        --report-dir ./reports_preservation
 """
 
 import argparse
@@ -29,29 +29,28 @@ from PIL import Image
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
 
-SIMPLE_PROMPT = """You are a strict hairstyle comparison expert.
+PRESERVATION_PROMPT = """You are a strict image quality assessor for hair transfer models.
 
-Above you see two images: [REFERENCE] and [OUTPUT].
-- REFERENCE = the target hairstyle.
-- OUTPUT = the result image that should replicate the REFERENCE hairstyle.
+Above you see two images: [INPUT] and [OUTPUT].
+- INPUT = original person BEFORE hair editing.
+- OUTPUT = result AFTER applying a new hairstyle onto the INPUT person.
 
-The two images may have different camera angles, lighting, or show different people. Ignore these differences. Focus ONLY on the hairstyle itself.
+The hair WILL be different — that is expected and intentional. Ignore all hair differences completely.
 
-TASK: Determine whether OUTPUT's hairstyle is IDENTICAL to REFERENCE's hairstyle in every detail.
+TASK: Determine whether ALL non-hair features are properly PRESERVED in OUTPUT compared to INPUT.
 
-Compare ALL of the following aspects with extreme scrutiny:
-- Overall hairstyle shape and silhouette
-- Hair color (including highlights, roots, gradient, tone)
-- Hair length (short, medium, long — exact match required)
-- Hair texture (straight, wavy, curly, permed)
-- Hair volume and layering
-- Parting direction and style
-- Bangs/fringe presence, shape, and length
-- Flow direction and styling
-- Hair detail quality (strand-level detail, flyaway hairs, natural layering)
+Compare ALL of the following aspects with extreme scrutiny (hair excluded):
+- Face identity: same person, same facial features, same face shape
+- Face details: eyes, eyebrows, nose, mouth, ears, skin tone, skin texture, facial hair, makeup
+- Face expression and gaze direction
+- Head pose and angle
+- Body and neck: same clothing, same neckline, same accessories (earrings, necklaces, glasses)
+- Background: same background scene, no artifacts or changes
+- Overall image quality: no blurring, no color shifts, no artifacts outside hair region
+- Lighting and color consistency on non-hair areas
 
-If ANY of these aspects differs — even slightly — answer false.
-Only answer true if the hairstyle is a near-perfect match across ALL aspects.
+If ANY non-hair feature is noticeably changed, distorted, or has artifacts — answer false.
+Only answer true if all non-hair features are perfectly preserved.
 
 Respond with ONLY a JSON object, no other text:
 {"match": true or false, "reason": "<1-2 sentences explaining your decision>"}"""
@@ -81,28 +80,28 @@ def set_seed(seed: int):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Simple Hair Match Validator (REFERENCE vs OUTPUT)",
+        description="Non-Hair Preservation Validator (INPUT vs OUTPUT)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Basic usage
-  python dataset_validator/validate_dataset_simple.py \\
-      --reference-dir ./ref --output-dir ./output
+  python dataset_validator/validate_dataset_preservation.py \\
+      --input-dir ./input --output-dir ./output
 
   # Ollama backend
-  python dataset_validator/validate_dataset_simple.py \\
-      --reference-dir ./ref --output-dir ./output \\
+  python dataset_validator/validate_dataset_preservation.py \\
+      --input-dir ./input --output-dir ./output \\
       --model qwen3.5-9b --backend ollama
 
   # Debug with 5 samples
-  python dataset_validator/validate_dataset_simple.py \\
-      --reference-dir ./ref --output-dir ./output \\
+  python dataset_validator/validate_dataset_preservation.py \\
+      --input-dir ./input --output-dir ./output \\
       --max-samples 5 --log-level debug
 """,
     )
 
-    parser.add_argument("--reference-dir", type=str, required=True,
-                        help="Path to reference images folder")
+    parser.add_argument("--input-dir", type=str, required=True,
+                        help="Path to input images folder")
     parser.add_argument("--output-dir", type=str, required=True,
                         help="Path to output images folder")
 
@@ -121,12 +120,12 @@ Examples:
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434")
 
     # Output settings
-    parser.add_argument("--report-dir", type=str, default="./reports_simple")
+    parser.add_argument("--report-dir", type=str, default="./reports_preservation")
     parser.add_argument("--copy-images", action="store_true",
                         help="Copy images to report-dir/images/")
 
     # Checkpoint settings
-    parser.add_argument("--checkpoint-dir", type=str, default="./checkpoints_simple")
+    parser.add_argument("--checkpoint-dir", type=str, default="./checkpoints_preservation")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--checkpoint-interval", type=int, default=100)
 
@@ -143,42 +142,42 @@ Examples:
 
 
 # ---------------------------------------------------------------------------
-# Dataset scanning (2-dir: reference + output only)
+# Dataset scanning (2-dir: input + output only)
 # ---------------------------------------------------------------------------
 
-def scan_dataset_pair(reference_dir: Path, output_dir: Path):
-    """Scan reference and output dirs, match by filename stem."""
-    ref_stems = {}
+def scan_dataset_pair(input_dir: Path, output_dir: Path):
+    """Scan input and output dirs, match by filename stem."""
+    inp_stems = {}
     out_stems = {}
 
-    for p in reference_dir.iterdir():
+    for p in input_dir.iterdir():
         if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS:
-            ref_stems[p.stem] = p
+            inp_stems[p.stem] = p
     for p in output_dir.iterdir():
         if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS:
             out_stems[p.stem] = p
 
-    all_stems = sorted(set(ref_stems) | set(out_stems))
+    all_stems = sorted(set(inp_stems) | set(out_stems))
     matched = []
     mismatched = []
 
     for stem in all_stems:
-        if stem in ref_stems and stem in out_stems:
+        if stem in inp_stems and stem in out_stems:
             matched.append({
                 "stem": stem,
-                "reference": ref_stems[stem],
+                "input": inp_stems[stem],
                 "output": out_stems[stem],
             })
         else:
             missing_in = []
-            if stem not in ref_stems:
-                missing_in.append("reference")
+            if stem not in inp_stems:
+                missing_in.append("input")
             if stem not in out_stems:
                 missing_in.append("output")
             mismatched.append({"stem": stem, "missing_in": missing_in})
 
     logger = logging.getLogger(__name__)
-    logger.info(f"Dataset scan: reference={len(ref_stems)}, output={len(out_stems)}")
+    logger.info(f"Dataset scan: input={len(inp_stems)}, output={len(out_stems)}")
     logger.info(f"Matched pairs: {len(matched)}")
     if mismatched:
         logger.warning(f"Mismatched: {len(mismatched)}")
@@ -192,7 +191,7 @@ def validate_images(matched):
     corrupted = []
     for entry in matched:
         bad = []
-        for key in ("reference", "output"):
+        for key in ("input", "output"):
             try:
                 with Image.open(entry[key]) as img:
                     img.verify()
@@ -206,10 +205,10 @@ def validate_images(matched):
 
 
 def load_image_pair(entry: dict, short_side: int = 512):
-    """Load and resize reference + output images."""
+    """Load and resize input + output images."""
     from dataset_validator.core.image_loader import resize_image
     images = []
-    for key in ("reference", "output"):
+    for key in ("input", "output"):
         try:
             img = Image.open(entry[key]).convert("RGB")
             img = resize_image(img, short_side)
@@ -274,9 +273,9 @@ def _build_messages_2img_qwen(images, prompt):
     return [{
         "role": "user",
         "content": [
-            {"type": "text", "text": "[REFERENCE] Target hairstyle:"},
+            {"type": "text", "text": "[INPUT] Original person before hair editing:"},
             {"type": "image", "image": images[0]},
-            {"type": "text", "text": "[OUTPUT] Result image:"},
+            {"type": "text", "text": "[OUTPUT] Result after hair transfer:"},
             {"type": "image", "image": images[1]},
             {"type": "text", "text": prompt},
         ],
@@ -287,17 +286,17 @@ def _build_messages_2img_generic(images, prompt):
     return [{
         "role": "user",
         "content": [
-            {"type": "text", "text": "[REFERENCE] Target hairstyle:"},
+            {"type": "text", "text": "[INPUT] Original person before hair editing:"},
             {"type": "image"},
-            {"type": "text", "text": "[OUTPUT] Result image:"},
+            {"type": "text", "text": "[OUTPUT] Result after hair transfer:"},
             {"type": "image"},
             {"type": "text", "text": prompt},
         ],
     }]
 
 
-def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
-    """Evaluate a single reference/output pair. Returns {"match": bool, "reason": str} or None."""
+def evaluate_single_preservation(vlm: dict, images, max_retries: int = 3):
+    """Evaluate a single input/output pair. Returns {"match": bool, "reason": str} or None."""
     import torch
 
     model = vlm["model"]
@@ -310,7 +309,7 @@ def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
         generated_ids = None
         try:
             if family in ("qwen2_vl", "qwen3_5"):
-                messages = _build_messages_2img_qwen(images, SIMPLE_PROMPT)
+                messages = _build_messages_2img_qwen(images, PRESERVATION_PROMPT)
                 from qwen_vl_utils import process_vision_info
                 text = processor.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True
@@ -321,7 +320,7 @@ def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
                     padding=True, return_tensors="pt",
                 ).to(model.device)
             else:
-                messages = _build_messages_2img_generic(images, SIMPLE_PROMPT)
+                messages = _build_messages_2img_generic(images, PRESERVATION_PROMPT)
                 text = processor.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True
                 )
@@ -368,7 +367,7 @@ def evaluate_single_simple(vlm: dict, images, max_retries: int = 3):
     return None
 
 
-def _evaluate_single_vllm_simple(vllm_url, model_id, images, max_retries=3):
+def _evaluate_single_vllm_preservation(vllm_url, model_id, images, max_retries=3):
     """Evaluate via vLLM API with 2 images."""
     import base64
     import io
@@ -384,11 +383,11 @@ def _evaluate_single_vllm_simple(vllm_url, model_id, images, max_retries=3):
     messages = [{
         "role": "user",
         "content": [
-            {"type": "text", "text": "[REFERENCE] Target hairstyle:"},
+            {"type": "text", "text": "[INPUT] Original person before hair editing:"},
             {"type": "image_url", "image_url": {"url": _img_to_b64(images[0])}},
-            {"type": "text", "text": "[OUTPUT] Result image:"},
+            {"type": "text", "text": "[OUTPUT] Result after hair transfer:"},
             {"type": "image_url", "image_url": {"url": _img_to_b64(images[1])}},
-            {"type": "text", "text": SIMPLE_PROMPT},
+            {"type": "text", "text": PRESERVATION_PROMPT},
         ],
     }]
 
@@ -414,7 +413,7 @@ def _evaluate_single_vllm_simple(vllm_url, model_id, images, max_retries=3):
     return None
 
 
-def _evaluate_single_ollama_simple(ollama_url, model_name, images, max_retries=3):
+def _evaluate_single_ollama_preservation(ollama_url, model_name, images, max_retries=3):
     """Evaluate via Ollama API with 2 images."""
     import base64
     import io
@@ -442,11 +441,11 @@ def _evaluate_single_ollama_simple(ollama_url, model_name, images, max_retries=3
     messages = [{
         "role": "user",
         "content": [
-            {"type": "text", "text": "[REFERENCE] Target hairstyle:"},
+            {"type": "text", "text": "[INPUT] Original person before hair editing:"},
             {"type": "image_url", "image_url": {"url": _img_to_b64(images[0])}},
-            {"type": "text", "text": "[OUTPUT] Result image:"},
+            {"type": "text", "text": "[OUTPUT] Result after hair transfer:"},
             {"type": "image_url", "image_url": {"url": _img_to_b64(images[1])}},
-            {"type": "text", "text": SIMPLE_PROMPT},
+            {"type": "text", "text": PRESERVATION_PROMPT},
         ],
     }]
 
@@ -496,17 +495,17 @@ def run_evaluation(entries, args):
             if pair is None:
                 results.append({
                     "filename": entry["stem"],
-                    "reference_file": Path(entry["reference"]).name,
+                    "input_file": Path(entry["input"]).name,
                     "output_file": Path(entry["output"]).name,
                     "match": None,
                     "reason": "Failed to load images", "error": True,
                 })
             else:
-                resp = evaluate_single_simple(vlm, pair, max_retries=3)
+                resp = evaluate_single_preservation(vlm, pair, max_retries=3)
                 if resp is None:
                     results.append({
                         "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
+                        "input_file": Path(entry["input"]).name,
                         "output_file": Path(entry["output"]).name,
                         "match": None,
                         "reason": "VLM evaluation failed", "error": True,
@@ -514,7 +513,7 @@ def run_evaluation(entries, args):
                 else:
                     results.append({
                         "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
+                        "input_file": Path(entry["input"]).name,
                         "output_file": Path(entry["output"]).name,
                         "match": resp["match"],
                         "reason": resp["reason"],
@@ -522,7 +521,7 @@ def run_evaluation(entries, args):
                     })
             pbar.set_postfix(
                 done=len(results),
-                matched=sum(1 for r in results if r.get("match") is True),
+                preserved=sum(1 for r in results if r.get("match") is True),
             )
 
     elif args.backend == "vllm":
@@ -540,17 +539,17 @@ def run_evaluation(entries, args):
             if pair is None:
                 results.append({
                     "filename": entry["stem"],
-                    "reference_file": Path(entry["reference"]).name,
+                    "input_file": Path(entry["input"]).name,
                     "output_file": Path(entry["output"]).name,
                     "match": None,
                     "reason": "Failed to load images", "error": True,
                 })
             else:
-                resp = _evaluate_single_vllm_simple(args.vllm_url, hf_id, pair)
+                resp = _evaluate_single_vllm_preservation(args.vllm_url, hf_id, pair)
                 if resp is None:
                     results.append({
                         "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
+                        "input_file": Path(entry["input"]).name,
                         "output_file": Path(entry["output"]).name,
                         "match": None,
                         "reason": "vLLM evaluation failed", "error": True,
@@ -558,7 +557,7 @@ def run_evaluation(entries, args):
                 else:
                     results.append({
                         "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
+                        "input_file": Path(entry["input"]).name,
                         "output_file": Path(entry["output"]).name,
                         "match": resp["match"],
                         "reason": resp["reason"],
@@ -566,7 +565,7 @@ def run_evaluation(entries, args):
                     })
             pbar.set_postfix(
                 done=len(results),
-                matched=sum(1 for r in results if r.get("match") is True),
+                preserved=sum(1 for r in results if r.get("match") is True),
             )
 
     elif args.backend == "ollama":
@@ -581,19 +580,19 @@ def run_evaluation(entries, args):
             if pair is None:
                 results.append({
                     "filename": entry["stem"],
-                    "reference_file": Path(entry["reference"]).name,
+                    "input_file": Path(entry["input"]).name,
                     "output_file": Path(entry["output"]).name,
                     "match": None,
                     "reason": "Failed to load images", "error": True,
                 })
             else:
-                resp = _evaluate_single_ollama_simple(
+                resp = _evaluate_single_ollama_preservation(
                     args.ollama_url, args.model, pair,
                 )
                 if resp is None:
                     results.append({
                         "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
+                        "input_file": Path(entry["input"]).name,
                         "output_file": Path(entry["output"]).name,
                         "match": None,
                         "reason": "Ollama evaluation failed", "error": True,
@@ -601,7 +600,7 @@ def run_evaluation(entries, args):
                 else:
                     results.append({
                         "filename": entry["stem"],
-                        "reference_file": Path(entry["reference"]).name,
+                        "input_file": Path(entry["input"]).name,
                         "output_file": Path(entry["output"]).name,
                         "match": resp["match"],
                         "reason": resp["reason"],
@@ -609,32 +608,32 @@ def run_evaluation(entries, args):
                     })
             pbar.set_postfix(
                 done=len(results),
-                matched=sum(1 for r in results if r.get("match") is True),
+                preserved=sum(1 for r in results if r.get("match") is True),
             )
 
     return results
 
 
 # ---------------------------------------------------------------------------
-# Report generation (simple true/false)
+# Report generation
 # ---------------------------------------------------------------------------
 
-def generate_simple_reports(results, metadata, entries_map, report_dir, image_dirs=None):
-    """Generate JSON, CSV, and HTML reports for simple match results."""
+def generate_preservation_reports(results, metadata, entries_map, report_dir, image_dirs=None):
+    """Generate JSON, CSV, and HTML reports for preservation results."""
     report_dir = Path(report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
     total = len(results)
-    matched = sum(1 for r in results if r.get("match") is True)
-    unmatched = sum(1 for r in results if r.get("match") is False)
+    preserved = sum(1 for r in results if r.get("match") is True)
+    not_preserved = sum(1 for r in results if r.get("match") is False)
     errors = sum(1 for r in results if r.get("error"))
 
     metadata.update({
         "total_samples": total,
-        "matched": matched,
-        "unmatched": unmatched,
+        "preserved": preserved,
+        "not_preserved": not_preserved,
         "errors": errors,
-        "match_rate": round(matched / total * 100, 1) if total > 0 else 0,
+        "preservation_rate": round(preserved / total * 100, 1) if total > 0 else 0,
     })
 
     # JSON report
@@ -657,14 +656,14 @@ def generate_simple_reports(results, metadata, entries_map, report_dir, image_di
 
     # HTML report
     html_path = report_dir / "summary.html"
-    _generate_simple_html(results, metadata, image_dirs, html_path)
+    _generate_preservation_html(results, metadata, image_dirs, html_path)
 
     logging.getLogger(__name__).info(f"Reports saved to {report_dir}")
     return {"json": json_path, "csv": csv_path, "html": html_path, "metadata": metadata}
 
 
-def _generate_simple_html(results, metadata, image_dirs, output_path):
-    """Generate a self-contained HTML report for simple match results."""
+def _generate_preservation_html(results, metadata, image_dirs, output_path):
+    """Generate a self-contained HTML report for preservation results."""
     elapsed = metadata.get("elapsed_time_sec", 0)
     hours, remainder = divmod(int(elapsed), 3600)
     minutes, seconds = divmod(remainder, 60)
@@ -678,7 +677,7 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Simple Hair Match Report</title>
+<title>Non-Hair Preservation Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -724,7 +723,7 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
 </head>
 <body>
 <div class="container">
-  <h1>Simple Hair Match Report</h1>
+  <h1>Non-Hair Preservation Report</h1>
   <div class="meta">
     Model: {metadata.get('model', '')} |
     Generated: {metadata.get('timestamp', '')} |
@@ -737,21 +736,21 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
       <div class="stat-big">{metadata['total_samples']}</div>
     </div>
     <div class="card">
-      <h3>Matched</h3>
-      <div class="stat-big color-match">{metadata['matched']}</div>
-      <div class="stat-label">{metadata['match_rate']}%</div>
+      <h3>Preserved</h3>
+      <div class="stat-big color-match">{metadata['preserved']}</div>
+      <div class="stat-label">{metadata['preservation_rate']}%</div>
     </div>
     <div class="card">
-      <h3>Unmatched</h3>
-      <div class="stat-big color-unmatch">{metadata['unmatched']}</div>
-      <div class="stat-label">{round(100 - metadata['match_rate'], 1)}%</div>
+      <h3>Not Preserved</h3>
+      <div class="stat-big color-unmatch">{metadata['not_preserved']}</div>
+      <div class="stat-label">{round(100 - metadata['preservation_rate'], 1)}%</div>
     </div>
     {"<div class='card'><h3>Errors</h3><div class='stat-big' style='color:#f39c12'>" + str(metadata['errors']) + "</div></div>" if metadata.get('errors', 0) > 0 else ""}
   </div>
 
   <div class="chart-row">
     <div class="chart-card">
-      <h3>Match / Unmatch Ratio</h3>
+      <h3>Preserved / Not Preserved</h3>
       <canvas id="pieChart"></canvas>
     </div>
   </div>
@@ -761,9 +760,9 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
       <input type="radio" id="filterAll" name="filter" value="all" checked onchange="applyFilter()">
       <label for="filterAll">All</label>
       <input type="radio" id="filterMatch" name="filter" value="match" onchange="applyFilter()">
-      <label for="filterMatch">Matched</label>
+      <label for="filterMatch">Preserved</label>
       <input type="radio" id="filterUnmatch" name="filter" value="unmatch" onchange="applyFilter()">
-      <label for="filterUnmatch">Unmatched</label>
+      <label for="filterUnmatch">Not Preserved</label>
     </div>
     <div>
       <label>Search: </label>
@@ -772,10 +771,10 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
     <div>
       <label>Sort: </label>
       <select id="sortSelect" onchange="applyFilter()">
-        <option value="name-asc">Filename (A → Z)</option>
-        <option value="name-desc">Filename (Z → A)</option>
-        <option value="unmatch-first">Unmatched first</option>
-        <option value="match-first">Matched first</option>
+        <option value="name-asc">Filename (A -> Z)</option>
+        <option value="name-desc">Filename (Z -> A)</option>
+        <option value="unmatch-first">Not Preserved first</option>
+        <option value="match-first">Preserved first</option>
       </select>
     </div>
   </div>
@@ -790,12 +789,12 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
 <script>
 const RESULTS = {results_json};
 const IMAGE_DIRS = {image_dirs_json};
-const matchCount = {metadata['matched']};
-const unmatchCount = {metadata['unmatched']};
+const preservedCount = {metadata['preserved']};
+const notPreservedCount = {metadata['not_preserved']};
 
 new Chart(document.getElementById('pieChart'), {{
   type: 'doughnut',
-  data: {{ labels: ['Matched', 'Unmatched'], datasets: [{{ data: [matchCount, unmatchCount], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
+  data: {{ labels: ['Preserved', 'Not Preserved'], datasets: [{{ data: [preservedCount, notPreservedCount], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
   options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
 }});
 
@@ -814,13 +813,13 @@ function renderCard(item) {{
   const isError = item.error === true;
   let badge;
   if (isError) badge = '<span class="sample-badge badge-error">ERROR</span>';
-  else if (isMatch) badge = '<span class="sample-badge badge-match">MATCH</span>';
-  else badge = '<span class="sample-badge badge-unmatch">UNMATCH</span>';
+  else if (isMatch) badge = '<span class="sample-badge badge-match">PRESERVED</span>';
+  else badge = '<span class="sample-badge badge-unmatch">NOT PRESERVED</span>';
 
   let imagesHtml = '';
-  if (IMAGE_DIRS.reference && IMAGE_DIRS.output) {{
+  if (IMAGE_DIRS.input && IMAGE_DIRS.output) {{
     imagesHtml = `<div class="image-row">
-      <div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.reference, item.reference_file)}}" alt="Reference"><div class="label">REFERENCE</div></div>
+      <div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.input, item.input_file)}}" alt="Input"><div class="label">INPUT</div></div>
       <div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.output, item.output_file)}}" alt="Output"><div class="label">OUTPUT</div></div>
     </div>`;
   }}
@@ -898,7 +897,7 @@ def main():
 
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
-    logger.info("Simple Hair Match Validator (REFERENCE vs OUTPUT)")
+    logger.info("Non-Hair Preservation Validator (INPUT vs OUTPUT)")
     logger.info("=" * 60)
 
     # Ensure package is importable
@@ -906,17 +905,17 @@ def main():
     if str(pkg_dir.parent) not in sys.path:
         sys.path.insert(0, str(pkg_dir.parent))
 
-    reference_dir = Path(args.reference_dir)
+    input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)
 
-    for name, d in [("reference", reference_dir), ("output", output_dir)]:
+    for name, d in [("input", input_dir), ("output", output_dir)]:
         if not d.is_dir():
             logger.error(f"{name} directory not found: {d}")
             sys.exit(1)
 
     # Step 1: Scan dataset
     logger.info("Step 1: Scanning dataset...")
-    matched, mismatched = scan_dataset_pair(reference_dir, output_dir)
+    matched, mismatched = scan_dataset_pair(input_dir, output_dir)
 
     if not matched:
         logger.error("No matched image pairs found.")
@@ -968,19 +967,19 @@ def main():
     }
 
     image_dirs = {
-        "reference": str(reference_dir.resolve()),
+        "input": str(input_dir.resolve()),
         "output": str(output_dir.resolve()),
     }
 
     if args.copy_images:
         logger.info("Copying images to report directory...")
         report_images_dir = Path(args.report_dir) / "images"
-        for role in ["reference", "output"]:
+        for role in ["input", "output"]:
             dest_dir = report_images_dir / role
             dest_dir.mkdir(parents=True, exist_ok=True)
         copied = 0
         for entry in valid_entries:
-            for role in ["reference", "output"]:
+            for role in ["input", "output"]:
                 src = Path(entry[role])
                 dest = report_images_dir / role / src.name
                 if not dest.exists():
@@ -991,12 +990,12 @@ def main():
                         logger.warning(f"Failed to copy {src}: {e}")
         logger.info(f"Copied {copied} images")
         image_dirs = {
-            "reference": "images/reference",
+            "input": "images/input",
             "output": "images/output",
             "_relative": True,
         }
 
-    report_paths = generate_simple_reports(
+    report_paths = generate_preservation_reports(
         results, metadata, entries_map,
         report_dir=Path(args.report_dir),
         image_dirs=image_dirs,
@@ -1015,12 +1014,12 @@ def main():
     meta = report_paths["metadata"]
     logger.info("=" * 60)
     logger.info("Validation Complete!")
-    logger.info(f"  Total:     {meta['total_samples']}")
-    logger.info(f"  Matched:   {meta['matched']} ({meta['match_rate']}%)")
-    logger.info(f"  Unmatched: {meta['unmatched']}")
+    logger.info(f"  Total:          {meta['total_samples']}")
+    logger.info(f"  Preserved:      {meta['preserved']} ({meta['preservation_rate']}%)")
+    logger.info(f"  Not Preserved:  {meta['not_preserved']}")
     if meta.get("errors", 0) > 0:
-        logger.info(f"  Errors:    {meta['errors']}")
-    logger.info(f"  Reports:   {Path(args.report_dir).resolve()}")
+        logger.info(f"  Errors:         {meta['errors']}")
+    logger.info(f"  Reports:        {Path(args.report_dir).resolve()}")
     logger.info("=" * 60)
 
 
