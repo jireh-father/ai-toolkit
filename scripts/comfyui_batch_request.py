@@ -451,7 +451,11 @@ def modify_workflow_qwen_hairstyle_edit(workflow: dict, image_path1: str, image_
         modified_workflow["106"]["inputs"]["image"] = image_path2
     
     # 3. 노드 138(SaveImageJpg) 수정 - filename_prefix 설정
+    # 리눅스 최대 파일명 255바이트, 확장자(.jpg=4) 고려하여 251바이트로 제한
+    max_prefix_bytes = 251
     output_prefix = f"{image1_name_without_ext}_{image2_name_without_ext}_{gen_index:04d}"
+    while len(output_prefix.encode('utf-8')) > max_prefix_bytes:
+        output_prefix = output_prefix[:len(output_prefix) - 1]
     if "138" in modified_workflow:
         modified_workflow["138"]["inputs"]["filename_prefix"] = output_prefix
     
@@ -527,6 +531,10 @@ def batch_request_qwen_hairstyle_edit(
         image1_name = os.path.splitext(os.path.basename(image_path1))[0]
         image2_name = os.path.splitext(os.path.basename(image_path2))[0]
         output_prefix = f"{image1_name}_{image2_name}_{gen_idx:04d}"
+        # 리눅스 최대 파일명 255바이트, 확장자(.jpg=4) 고려하여 251바이트로 제한
+        max_prefix_bytes = 251
+        while len(output_prefix.encode('utf-8')) > max_prefix_bytes:
+            output_prefix = output_prefix[:len(output_prefix) - 1]
         
         # force_request가 False이면 output_dir에 파일 존재 여부 확인
         if not force_request:
