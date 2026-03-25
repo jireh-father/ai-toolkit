@@ -730,8 +730,8 @@ def main():
     parser.add_argument(
         '--seed',
         type=int,
-        default=0,
-        help='랜덤 시드 (기본값: 0)'
+        default=None,
+        help='랜덤 시드 (기본값: None, 매 실행마다 다른 결과)'
     )
 
     #output_workflow_dir
