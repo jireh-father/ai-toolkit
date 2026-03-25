@@ -765,10 +765,10 @@ def main():
             print(f"오류: 이미지 디렉토리를 찾을 수 없습니다: {dir_path}")
             return 1
     
-    # output_dir 존재 검증
-    if not os.path.isdir(args.output_dir):
-        print(f"오류: 출력 디렉토리를 찾을 수 없습니다: {args.output_dir}")
-        return 1
+    # output_dir 및 하위 폴더 생성
+    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(os.path.join(args.output_dir, "reference_image"), exist_ok=True)
+    os.makedirs(os.path.join(args.output_dir, "input_image"), exist_ok=True)
     
     # 워크플로우 경로 조합
     workflow_path = f"{args.workflow_dir}/{args.workflow_type}.json"
