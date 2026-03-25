@@ -67,11 +67,13 @@ CLOTH_TOP_LENGTHS = [
     "long sleeved", "short sleeved"
 ]
 
-def queue_prompt(prompt_workflow, ip):
+def queue_prompt(prompt_workflow, ip, cookie=None):
     p = {"prompt": prompt_workflow}
     data = json.dumps(p).encode('utf-8')
 
     req = request.Request(f"http://{ip}/prompt", data=data)
+    if cookie:
+        req.add_header("Cookie", cookie)
     res = request.urlopen(req)
     if res.code != 200:
         raise Exception(f"Error: {res.code} {res.reason}")
@@ -477,6 +479,7 @@ def batch_request_qwen_hairstyle_edit(
     output_dir: str,
     num_gens: int,
     force_request: bool = False,
+    cookie: str = None,
 ) -> dict[str, str]:
     """
     qwen_hairstyle_edit 워크플로우를 위한 배치 요청 함수입니다.
@@ -551,7 +554,7 @@ def batch_request_qwen_hairstyle_edit(
         
         try:
             # ComfyUI에 요청
-            prompt_id = queue_prompt(modified_workflow, current_host)
+            prompt_id = queue_prompt(modified_workflow, current_host, cookie=cookie)
             results[output_prefix] = prompt_id
             print(f"[{gen_idx + 1}/{num_gens}] {output_prefix} -> {current_host} (prompt_id: {prompt_id})")
         except Exception as e:
@@ -575,6 +578,7 @@ def batch_request_to_comfyui(
     output_workflow_dir: str,
     output_dir: str,
     force_request: bool = False,
+    cookie: str = None,
 ) -> dict[str, str]:
     """
     이미지 파일들을 라운드로빈 방식으로 ComfyUI 서버에 요청합니다.
@@ -639,7 +643,7 @@ def batch_request_to_comfyui(
         
         try:
             # ComfyUI에 요청
-            prompt_id = queue_prompt(modified_workflow, current_host)
+            prompt_id = queue_prompt(modified_workflow, current_host, cookie=cookie)
             results[image_path] = prompt_id
             print(f"[{idx + 1}/{len(image_files)}] {os.path.basename(image_path)} -> {current_host} (prompt_id: {prompt_id})")
         except Exception as e:
@@ -742,6 +746,13 @@ def main():
         default=False,
         help='True면 무조건 요청, False면 output_dir에 파일 존재시 스킵 (기본값: False)'
     )
+
+    parser.add_argument(
+        '--cookie',
+        type=str,
+        default=None,
+        help='ComfyUI 인증 쿠키 (예: "session=abc123")'
+    )
     
     args = parser.parse_args()
 
@@ -789,7 +800,8 @@ def main():
             output_workflow_dir=args.output_workflow_dir,
             output_dir=args.output_dir,
             num_gens=args.num_gens,
-            force_request=args.force_request
+            force_request=args.force_request,
+            cookie=args.cookie
         )
     else:
         results = batch_request_to_comfyui(
@@ -800,7 +812,8 @@ def main():
             gender=args.gender,
             output_workflow_dir=args.output_workflow_dir,
             output_dir=args.output_dir,
-            force_request=args.force_request
+            force_request=args.force_request,
+            cookie=args.cookie
         )
     
     # 결과 요약
