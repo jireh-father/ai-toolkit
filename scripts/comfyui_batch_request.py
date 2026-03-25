@@ -776,7 +776,7 @@ def main():
     random.seed(args.seed)
     
     # 배치 요청 실행
-    if args.workflow_type == "qwen_hairstyle_edit":
+    if args.workflow_type in ["qwen_hairstyle_edit", "qwen_lightning_hairstyle_edit"]:
         results = batch_request_qwen_hairstyle_edit(
             image_dir=args.image_dir,
             workflow_path=workflow_path,
