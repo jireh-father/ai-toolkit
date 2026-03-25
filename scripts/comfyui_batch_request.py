@@ -112,6 +112,14 @@ def find_node_by_class_type_and_title(workflow: dict, class_type: str) -> tuple[
     return None
 
 
+def truncate_filename(name: str, ext: str = "", max_bytes: int = 200) -> str:
+    """파일명을 리눅스 최대 파일명 길이에 맞게 자른다. ext는 확장자(.json 등)."""
+    limit = max_bytes - len(ext.encode('utf-8'))
+    while len(name.encode('utf-8')) > limit:
+        name = name[:len(name) - 1]
+    return name + ext
+
+
 def calculate_resolution_for_width(width: int) -> int:
     """
     이미지 가로 길이보다 작으면서 64로 나눠지는 가장 큰 값을 계산합니다.
@@ -451,11 +459,7 @@ def modify_workflow_qwen_hairstyle_edit(workflow: dict, image_path1: str, image_
         modified_workflow["106"]["inputs"]["image"] = image_path2
     
     # 3. 노드 138(SaveImageJpg) 수정 - filename_prefix 설정
-    # 리눅스 최대 파일명 255바이트, 확장자(.jpg=4) 고려하여 251바이트로 제한
-    max_prefix_bytes = 251
-    output_prefix = f"{image1_name_without_ext}_{image2_name_without_ext}_{gen_index:04d}"
-    while len(output_prefix.encode('utf-8')) > max_prefix_bytes:
-        output_prefix = output_prefix[:len(output_prefix) - 1]
+    output_prefix = truncate_filename(f"{image1_name_without_ext}_{image2_name_without_ext}_{gen_index:04d}")
     if "138" in modified_workflow:
         modified_workflow["138"]["inputs"]["filename_prefix"] = output_prefix
     
@@ -530,11 +534,7 @@ def batch_request_qwen_hairstyle_edit(
         # 파일명 생성을 위한 이름 추출
         image1_name = os.path.splitext(os.path.basename(image_path1))[0]
         image2_name = os.path.splitext(os.path.basename(image_path2))[0]
-        output_prefix = f"{image1_name}_{image2_name}_{gen_idx:04d}"
-        # 리눅스 최대 파일명 255바이트, 확장자(.jpg=4) 고려하여 251바이트로 제한
-        max_prefix_bytes = 251
-        while len(output_prefix.encode('utf-8')) > max_prefix_bytes:
-            output_prefix = output_prefix[:len(output_prefix) - 1]
+        output_prefix = truncate_filename(f"{image1_name}_{image2_name}_{gen_idx:04d}")
         
         # force_request가 False이면 output_dir에 파일 존재 여부 확인
         if not force_request:
@@ -557,7 +557,7 @@ def batch_request_qwen_hairstyle_edit(
         
         if output_workflow_dir:
             # 워크플로우 저장
-            workflow_filename = f"{output_prefix}.json"
+            workflow_filename = truncate_filename(output_prefix, ext=".json")
             json.dump(modified_workflow, open(os.path.join(output_workflow_dir, workflow_filename), 'w+'), indent=2, ensure_ascii=False)
         
         try:
@@ -647,7 +647,8 @@ def batch_request_to_comfyui(
         
         if output_workflow_dir:
             # 워크플로우 저장
-            json.dump(modified_workflow, open(os.path.join(output_workflow_dir, os.path.basename(image_path) + '.json'), 'w+'), indent=2, ensure_ascii=False)
+            wf_filename = truncate_filename(os.path.basename(image_path), ext=".json")
+            json.dump(modified_workflow, open(os.path.join(output_workflow_dir, wf_filename), 'w+'), indent=2, ensure_ascii=False)
         
         try:
             # ComfyUI에 요청
