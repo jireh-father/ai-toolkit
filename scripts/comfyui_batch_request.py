@@ -460,6 +460,11 @@ def modify_workflow_qwen_hairstyle_edit(workflow: dict, image_path1: str, image_
     # 5. 노드 140(SaveImageJpg) 수정 - reference_image/ prefix 추가
     if "140" in modified_workflow:
         modified_workflow["140"]["inputs"]["filename_prefix"] = f"reference_image/{output_prefix}"
+
+    # 6. 노드 3(KSampler) 수정 - seed 랜덤 설정
+    if "3" in modified_workflow:
+        modified_workflow["3"]["inputs"]["seed"] = random.randint(0, 2**64 - 1)
+    
     
     return modified_workflow
 
