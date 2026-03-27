@@ -129,6 +129,8 @@ Examples:
                         choices=["local", "vllm", "ollama"])
     parser.add_argument("--vllm-url", type=str, default="http://localhost:8000")
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434")
+    parser.add_argument("--ollama-port", type=int, default=None,
+                        help="Ollama server port (overrides port in --ollama-url, default: 11434)")
 
     # Threshold settings
     parser.add_argument("--threshold", type=int, default=7,
@@ -153,7 +155,10 @@ Examples:
     parser.add_argument("--log-level", type=str, default="info",
                         choices=["debug", "info", "warning", "error"])
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.ollama_port is not None:
+        args.ollama_url = f"http://localhost:{args.ollama_port}"
+    return args
 
 
 # ---------------------------------------------------------------------------
