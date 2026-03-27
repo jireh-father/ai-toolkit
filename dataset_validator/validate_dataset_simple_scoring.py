@@ -15,6 +15,7 @@ import argparse
 import csv
 import json
 import logging
+import multiprocessing as mp
 import random
 import re
 import shutil
@@ -129,6 +130,10 @@ Examples:
                         choices=["local", "vllm", "ollama"])
     parser.add_argument("--vllm-url", type=str, default="http://localhost:8000")
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434")
+    parser.add_argument("--ollama-urls", type=str, default=None,
+                        help="Comma-separated Ollama server URLs for parallel processing. "
+                             "Each URL runs in a separate process. "
+                             "e.g. http://localhost:11434,http://localhost:11435")
     parser.add_argument("--ollama-port", type=int, default=None,
                         help="Ollama server port (overrides port in --ollama-url, default: 11434)")
 
@@ -507,6 +512,27 @@ def _make_result(entry, score, reason, error):
     }
 
 
+def _ollama_worker(worker_id, ollama_url, model_name, entries_with_idx,
+                   short_side, result_queue):
+    """Worker process for parallel Ollama evaluation."""
+    wlogger = logging.getLogger(f"ollama-worker-{worker_id}")
+    wlogger.info(f"Starting on {ollama_url}, {len(entries_with_idx)} samples")
+
+    for idx, entry in entries_with_idx:
+        pair = load_image_pair(entry, short_side=short_side)
+        if pair is None:
+            result = _make_result(entry, None, "Failed to load images", True)
+        else:
+            resp = _evaluate_single_ollama_scoring(ollama_url, model_name, pair)
+            if resp is None:
+                result = _make_result(entry, None, "Ollama evaluation failed", True)
+            else:
+                result = _make_result(entry, resp["score"], resp["reason"], False)
+        result_queue.put((idx, result))
+
+    wlogger.info("Done")
+
+
 def run_evaluation(entries, args):
     """Run evaluation on all entries."""
     from tqdm import tqdm
@@ -566,28 +592,81 @@ def run_evaluation(entries, args):
 
     elif args.backend == "ollama":
         from dataset_validator.core.ollama_client import check_server_health
-        if not check_server_health(args.ollama_url):
-            raise ConnectionError(f"Ollama server not reachable at {args.ollama_url}")
-        logger.info(f"Connected to Ollama server at {args.ollama_url}")
 
-        pbar = tqdm(entries, desc="Evaluating (Ollama)", unit="sample")
-        for entry in pbar:
-            pair = load_image_pair(entry, short_side=args.resize_short_side)
-            if pair is None:
-                results.append(_make_result(entry, None, "Failed to load images", True))
-            else:
-                resp = _evaluate_single_ollama_scoring(
-                    args.ollama_url, args.model, pair,
-                )
-                if resp is None:
-                    results.append(_make_result(entry, None, "Ollama evaluation failed", True))
+        # Determine Ollama URLs
+        ollama_urls = [args.ollama_url]
+        if args.ollama_urls:
+            ollama_urls = [u.strip() for u in args.ollama_urls.split(",") if u.strip()]
+
+        # Health check all servers
+        for url in ollama_urls:
+            if not check_server_health(url):
+                raise ConnectionError(f"Ollama server not reachable at {url}")
+            logger.info(f"Connected to Ollama server at {url}")
+
+        if len(ollama_urls) <= 1:
+            # Single-process mode
+            pbar = tqdm(entries, desc="Evaluating (Ollama)", unit="sample")
+            for entry in pbar:
+                pair = load_image_pair(entry, short_side=args.resize_short_side)
+                if pair is None:
+                    results.append(_make_result(entry, None, "Failed to load images", True))
                 else:
-                    results.append(_make_result(entry, resp["score"], resp["reason"], False))
-            scores = [r["score"] for r in results if r["score"] is not None]
-            pbar.set_postfix(
-                done=len(results),
-                avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
-            )
+                    resp = _evaluate_single_ollama_scoring(
+                        ollama_urls[0], args.model, pair,
+                    )
+                    if resp is None:
+                        results.append(_make_result(entry, None, "Ollama evaluation failed", True))
+                    else:
+                        results.append(_make_result(entry, resp["score"], resp["reason"], False))
+                scores = [r["score"] for r in results if r["score"] is not None]
+                pbar.set_postfix(
+                    done=len(results),
+                    avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
+                )
+        else:
+            # Multi-process mode: one process per Ollama URL
+            num_workers = len(ollama_urls)
+            logger.info(f"Launching {num_workers} parallel workers")
+
+            # Split entries into chunks with original indices
+            chunks = [[] for _ in range(num_workers)]
+            for i, entry in enumerate(entries):
+                chunks[i % num_workers].append((i, entry))
+
+            ctx = mp.get_context("fork")
+            result_queue = ctx.Queue()
+
+            processes = []
+            for worker_id in range(num_workers):
+                p = ctx.Process(
+                    target=_ollama_worker,
+                    args=(worker_id, ollama_urls[worker_id], args.model,
+                          chunks[worker_id], args.resize_short_side, result_queue),
+                )
+                p.start()
+                processes.append(p)
+
+            # Collect results with progress bar
+            total = len(entries)
+            indexed_results = []
+            with tqdm(total=total, desc=f"Evaluating (Ollama x{num_workers})", unit="sample") as pbar:
+                while len(indexed_results) < total:
+                    idx, result = result_queue.get()
+                    indexed_results.append((idx, result))
+                    scores = [r["score"] for _, r in indexed_results if r["score"] is not None]
+                    pbar.update(1)
+                    pbar.set_postfix(
+                        done=len(indexed_results),
+                        avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
+                    )
+
+            for p in processes:
+                p.join()
+
+            # Sort by original index to maintain order
+            indexed_results.sort(key=lambda x: x[0])
+            results = [r for _, r in indexed_results]
 
     return results
 
@@ -1040,7 +1119,11 @@ def main():
     if args.backend == "vllm":
         logger.info(f"Model: {args.model}, Backend: vLLM ({args.vllm_url})")
     elif args.backend == "ollama":
-        logger.info(f"Model: {args.model}, Backend: Ollama ({args.ollama_url})")
+        if args.ollama_urls:
+            urls = [u.strip() for u in args.ollama_urls.split(",") if u.strip()]
+            logger.info(f"Model: {args.model}, Backend: Ollama x{len(urls)} ({', '.join(urls)})")
+        else:
+            logger.info(f"Model: {args.model}, Backend: Ollama ({args.ollama_url})")
     else:
         logger.info(f"Model: {args.model}, Quantization: {args.quantization}")
 
