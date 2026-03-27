@@ -140,6 +140,11 @@ def _process_single_pair(segmentor, pair, threshold_mae):
 
 def _worker_process(worker_id, device, pairs, threshold_mae, result_queue, log_level):
     """Worker process: creates its own FaceSegmentor and processes assigned pairs."""
+    # Ensure project root is importable in spawned process
+    project_root = str(Path(__file__).resolve().parent.parent)
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
     logging.basicConfig(
         level=getattr(logging, log_level.upper()),
         format=f"%(asctime)s [%(levelname)s] worker-{worker_id}: %(message)s",
@@ -147,7 +152,8 @@ def _worker_process(worker_id, device, pairs, threshold_mae, result_queue, log_l
     wlogger = logging.getLogger(f"worker-{worker_id}")
     wlogger.info(f"Starting on {device}, {len(pairs)} pairs to process")
 
-    segmentor = FaceSegmentor(device=device)
+    from dataset_validator.core.face_segmentor import FaceSegmentor as _FaceSegmentor
+    segmentor = _FaceSegmentor(device=device)
 
     for pair in pairs:
         result = _process_single_pair(segmentor, pair, threshold_mae)
