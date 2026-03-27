@@ -26,10 +26,10 @@ from tqdm import tqdm
 # Ensure project root is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from dataset_validator.core.face_segmentor import FaceSegmentor
+# Lazy imports for spawn-safe multiprocessing:
+# FaceSegmentor, compare_faces etc. are imported inside functions
+# so spawned workers can set sys.path before importing.
 from dataset_validator.core.image_loader import SUPPORTED_EXTENSIONS, _get_image_stems
-from dataset_validator.core.pixel_comparator import compare_faces
-from dataset_validator.report.face_report_generator import generate_all_reports
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,8 @@ def _process_single_pair(segmentor, pair, threshold_mae):
             return {"filename": filename, "pass": False, "skipped": True,
                     "reason": "Face not detected in output"}
 
-        metrics = compare_faces(input_img, output_img, input_mask, output_mask)
+        from dataset_validator.core.pixel_comparator import compare_faces as _compare_faces
+        metrics = _compare_faces(input_img, output_img, input_mask, output_mask)
         passed = metrics["mae"] <= threshold_mae
 
         result = {"filename": filename, "pass": passed, "skipped": False, **metrics}
@@ -217,6 +218,7 @@ def main():
     if num_workers <= 1:
         # Single-process mode (original behavior)
         logger.info(f"Loading FaceSegmentor on {args.device}")
+        from dataset_validator.core.face_segmentor import FaceSegmentor
         segmentor = FaceSegmentor(device=args.device)
 
         results = []
@@ -301,6 +303,7 @@ def main():
         "input": str(input_dir.resolve()),
         "output": str(output_dir.resolve()),
     }
+    from dataset_validator.report.face_report_generator import generate_all_reports
     report_paths = generate_all_reports(
         results=results,
         metadata=metadata,
