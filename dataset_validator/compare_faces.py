@@ -139,10 +139,8 @@ def _process_single_pair(segmentor, pair, threshold_mae):
                 "reason": f"Error: {str(e)}"}
 
 
-def _worker_process(worker_id, device, pairs, threshold_mae, result_queue, log_level, parent_sys_path):
+def _worker_process(worker_id, device, pairs, threshold_mae, result_queue, log_level):
     """Worker process: creates its own FaceSegmentor and processes assigned pairs."""
-    # Restore parent's sys.path so spawned process can find all packages (conda env, project root, etc.)
-    sys.path[:] = parent_sys_path
 
     logging.basicConfig(
         level=getattr(logging, log_level.upper()),
@@ -241,17 +239,15 @@ def main():
         for i, pair in enumerate(pairs):
             chunks[i % num_workers].append(pair)
 
-        ctx = mp.get_context("spawn")
+        ctx = mp.get_context("fork")
         result_queue = ctx.Queue()
-        current_sys_path = sys.path.copy()
 
         processes = []
         for worker_id in range(num_workers):
             p = ctx.Process(
                 target=_worker_process,
                 args=(worker_id, devices[worker_id], chunks[worker_id],
-                      args.threshold_mae, result_queue, args.log_level,
-                      current_sys_path),
+                      args.threshold_mae, result_queue, args.log_level),
             )
             p.start()
             processes.append(p)
