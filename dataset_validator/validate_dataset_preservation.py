@@ -1,8 +1,7 @@
-"""Non-hair preservation scoring validator (INPUT vs OUTPUT only).
+"""Face identity preservation validator (INPUT vs OUTPUT only).
 
-Compares input and output images and scores how well non-hair features
-(face, body, background, clothing, etc.) are preserved after hair transfer.
-Returns a score of 0-10 per sample.
+Compares input and output images to determine if face identity is
+consistent after hair transfer. Returns true/false per sample.
 
 Usage:
     python dataset_validator/validate_dataset_preservation.py \
@@ -30,7 +29,7 @@ from PIL import Image
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
 
-PRESERVATION_PROMPT = """You are a strict image quality assessor for hair transfer models.
+PRESERVATION_PROMPT = """You are a face identity consistency checker for hair transfer models.
 
 Above you see two images: [INPUT] and [OUTPUT].
 - INPUT = original person BEFORE hair editing.
@@ -38,31 +37,25 @@ Above you see two images: [INPUT] and [OUTPUT].
 
 The hair WILL be different — that is expected and intentional. Ignore all hair differences completely.
 
-TASK: Score how well ALL non-hair features are PRESERVED in OUTPUT compared to INPUT on a 0-10 scale.
+TASK: Determine whether the face identity is consistent between INPUT and OUTPUT.
 
-Compare ALL of the following aspects with extreme scrutiny (hair excluded):
-- Face identity: same person, same facial features, same face shape
-- Face details: eyes, eyebrows, nose, mouth, ears, skin tone, skin texture, facial hair, makeup
-- Face expression and gaze direction
-- Head pose and angle
-- Body and neck: same clothing, same neckline, same accessories (earrings, necklaces, glasses)
-- Background: same background scene, no artifacts or changes
-- Overall image quality: no blurring, no color shifts, no artifacts outside hair region
-- Lighting and color consistency on non-hair areas
+Focus ONLY on face identity:
+- Is it the same person? Same facial structure, same eyes, nose, mouth, jawline?
+- Are the core facial features preserved (not distorted, not a different person)?
 
-SCORING GUIDE (be honest, not generous):
-- 0: Completely different image, nothing preserved
-- 1-2: Severe distortion — face identity lost, major artifacts everywhere
-- 3-4: Major issues — face partially recognizable but significant changes (skin tone shift, expression changed, background altered)
-- 5: Partially preserved but with multiple obvious flaws (e.g. slight face distortion, background artifacts, color shift)
-- 6: Mostly preserved with notable flaws (e.g. subtle skin tone change, minor background artifact, slight blur)
-- 7: Good preservation with minor differences (e.g. very slight color shift, tiny artifact barely noticeable)
-- 8: Very good preservation, only subtle differences visible on close inspection
-- 9: Near perfect, almost indistinguishable non-hair features
-- 10: Perfect preservation in every aspect (extremely rare)
+IMPORTANT — ignore ALL of the following:
+- Any hair differences (color, length, style, volume, etc.)
+- Parts of the face (forehead, ears, temples, sideburns area) that become newly visible or hidden due to the hairstyle change — this is completely normal and expected
+- Minor lighting or color tone shifts
+- Background changes
+- Clothing or accessory differences
+- Slight expression changes
+
+Answer true if the face identity is clearly the same person.
+Answer false ONLY if the face is severely distorted, disfigured, or looks like a completely different person.
 
 Respond with ONLY a JSON object, no other text:
-{"score": <0-10>, "reason": "<1-2 sentences explaining your score>"}"""
+{"match": true or false, "reason": "<1-2 sentences explaining your decision>"}"""
 
 
 def setup_logging(level: str):
@@ -89,17 +82,13 @@ def set_seed(seed: int):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Non-Hair Preservation Scoring Validator (INPUT vs OUTPUT)",
+        description="Face Identity Preservation Validator (INPUT vs OUTPUT)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Basic usage
   python dataset_validator/validate_dataset_preservation.py \\
       --input-dir ./input --output-dir ./output
-
-  # With pass threshold
-  python dataset_validator/validate_dataset_preservation.py \\
-      --input-dir ./input --output-dir ./output --threshold 7
 
   # Ollama backend
   python dataset_validator/validate_dataset_preservation.py \\
@@ -142,10 +131,6 @@ Examples:
                              "e.g. http://localhost:11434,http://localhost:11435")
     parser.add_argument("--ollama-port", type=int, default=None,
                         help="Ollama server port (overrides port in --ollama-url, default: 11434)")
-
-    # Threshold settings
-    parser.add_argument("--threshold", type=int, default=7,
-                        help="Pass threshold score (0-10, default: 7)")
 
     # Output settings
     parser.add_argument("--report-dir", type=str, default="./reports_preservation")
@@ -250,7 +235,7 @@ def load_image_pair(entry: dict, short_side: int = 512):
 
 
 # ---------------------------------------------------------------------------
-# Evaluation (2-image, score 0-10)
+# Evaluation (2-image, true/false)
 # ---------------------------------------------------------------------------
 
 def _parse_json_response(text: str) -> Optional[dict]:
@@ -282,23 +267,22 @@ def _parse_json_response(text: str) -> Optional[dict]:
     return None
 
 
-def _validate_scoring_response(data: dict) -> Optional[dict]:
-    """Validate score response: score must be int 0-10."""
+def _validate_simple_response(data: dict) -> Optional[dict]:
+    """Validate true/false response."""
     if not isinstance(data, dict):
         return None
-    score_val = data.get("score")
-    if score_val is None:
+    match_val = data.get("match")
+    if match_val is None:
         return None
-    try:
-        score = int(score_val)
-    except (ValueError, TypeError):
-        try:
-            score = int(float(score_val))
-        except (ValueError, TypeError):
-            return None
-    if not (0 <= score <= 10):
-        return None
-    return {"score": score, "reason": str(data.get("reason", ""))}
+    if isinstance(match_val, bool):
+        return {"match": match_val, "reason": str(data.get("reason", ""))}
+    if isinstance(match_val, str):
+        lower = match_val.lower().strip()
+        if lower in ("true", "yes", "1"):
+            return {"match": True, "reason": str(data.get("reason", ""))}
+        if lower in ("false", "no", "0"):
+            return {"match": False, "reason": str(data.get("reason", ""))}
+    return None
 
 
 def _build_messages_2img_qwen(images, prompt):
@@ -328,7 +312,7 @@ def _build_messages_2img_generic(images, prompt):
 
 
 def evaluate_single_preservation(vlm: dict, images, max_retries: int = 3):
-    """Evaluate a single input/output pair. Returns {"score": int, "reason": str} or None."""
+    """Evaluate a single input/output pair. Returns {"match": bool, "reason": str} or None."""
     import torch
 
     model = vlm["model"]
@@ -380,7 +364,7 @@ def evaluate_single_preservation(vlm: dict, images, max_retries: int = 3):
                 logger.warning(f"JSON parse failed (attempt {attempt + 1}/{max_retries})")
                 continue
 
-            validated = _validate_scoring_response(parsed)
+            validated = _validate_simple_response(parsed)
             if validated is None:
                 logger.warning(f"Response validation failed (attempt {attempt + 1}/{max_retries})")
                 continue
@@ -436,7 +420,7 @@ def _evaluate_single_vllm_preservation(vllm_url, model_id, images, max_retries=3
             logger.debug(f"vLLM response (attempt {attempt + 1}): {response_text[:200]}")
             parsed = _parse_json_response(response_text)
             if parsed:
-                validated = _validate_scoring_response(parsed)
+                validated = _validate_simple_response(parsed)
                 if validated:
                     return validated
             logger.warning(f"Parse/validation failed (attempt {attempt + 1}/{max_retries})")
@@ -494,7 +478,7 @@ def _evaluate_single_ollama_preservation(ollama_url, model_name, images, max_ret
             logger.debug(f"Ollama response (attempt {attempt + 1}): {response_text[:200]}")
             parsed = _parse_json_response(response_text)
             if parsed:
-                validated = _validate_scoring_response(parsed)
+                validated = _validate_simple_response(parsed)
                 if validated:
                     return validated
             logger.warning(f"Parse/validation failed (attempt {attempt + 1}/{max_retries})")
@@ -507,13 +491,13 @@ def _evaluate_single_ollama_preservation(ollama_url, model_name, images, max_ret
 # Evaluation runner
 # ---------------------------------------------------------------------------
 
-def _make_result(entry, score, reason, error):
+def _make_result(entry, match, reason, error):
     """Build a result dict with file names."""
     return {
         "filename": entry["stem"],
         "input_file": Path(entry["input"]).name,
         "output_file": Path(entry["output"]).name,
-        "score": score,
+        "match": match,
         "reason": reason,
         "error": error,
     }
@@ -534,7 +518,7 @@ def _ollama_worker(worker_id, ollama_url, model_name, entries_with_idx,
             if resp is None:
                 result = _make_result(entry, None, "Ollama evaluation failed", True)
             else:
-                result = _make_result(entry, resp["score"], resp["reason"], False)
+                result = _make_result(entry, resp["match"], resp["reason"], False)
         result_queue.put((idx, result))
 
     wlogger.info("Done")
@@ -564,11 +548,10 @@ def run_evaluation(entries, args):
                 if resp is None:
                     results.append(_make_result(entry, None, "VLM evaluation failed", True))
                 else:
-                    results.append(_make_result(entry, resp["score"], resp["reason"], False))
-            scores = [r["score"] for r in results if r["score"] is not None]
+                    results.append(_make_result(entry, resp["match"], resp["reason"], False))
             pbar.set_postfix(
                 done=len(results),
-                avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
+                preserved=sum(1 for r in results if r.get("match") is True),
             )
 
     elif args.backend == "vllm":
@@ -590,11 +573,10 @@ def run_evaluation(entries, args):
                 if resp is None:
                     results.append(_make_result(entry, None, "vLLM evaluation failed", True))
                 else:
-                    results.append(_make_result(entry, resp["score"], resp["reason"], False))
-            scores = [r["score"] for r in results if r["score"] is not None]
+                    results.append(_make_result(entry, resp["match"], resp["reason"], False))
             pbar.set_postfix(
                 done=len(results),
-                avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
+                preserved=sum(1 for r in results if r.get("match") is True),
             )
 
     elif args.backend == "ollama":
@@ -625,11 +607,10 @@ def run_evaluation(entries, args):
                     if resp is None:
                         results.append(_make_result(entry, None, "Ollama evaluation failed", True))
                     else:
-                        results.append(_make_result(entry, resp["score"], resp["reason"], False))
-                scores = [r["score"] for r in results if r["score"] is not None]
+                        results.append(_make_result(entry, resp["match"], resp["reason"], False))
                 pbar.set_postfix(
                     done=len(results),
-                    avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
+                    preserved=sum(1 for r in results if r.get("match") is True),
                 )
         else:
             # Multi-process mode: one process per Ollama URL
@@ -661,11 +642,10 @@ def run_evaluation(entries, args):
                 while len(indexed_results) < total:
                     idx, result = result_queue.get()
                     indexed_results.append((idx, result))
-                    scores = [r["score"] for _, r in indexed_results if r["score"] is not None]
                     pbar.update(1)
                     pbar.set_postfix(
                         done=len(indexed_results),
-                        avg=f"{sum(scores)/len(scores):.1f}" if scores else "N/A",
+                        preserved=sum(1 for _, r in indexed_results if r.get("match") is True),
                     )
 
             for p in processes:
@@ -679,38 +659,25 @@ def run_evaluation(entries, args):
 
 
 # ---------------------------------------------------------------------------
-# Report generation (scoring)
+# Report generation
 # ---------------------------------------------------------------------------
 
-def generate_preservation_reports(results, metadata, entries_map, report_dir,
-                                  threshold=7, image_dirs=None):
-    """Generate JSON, CSV, and HTML reports for preservation scoring results."""
+def generate_preservation_reports(results, metadata, entries_map, report_dir, image_dirs=None):
+    """Generate JSON, CSV, and HTML reports for preservation results."""
     report_dir = Path(report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
-    valid_scores = [r["score"] for r in results if r["score"] is not None]
     total = len(results)
+    preserved = sum(1 for r in results if r.get("match") is True)
+    not_preserved = sum(1 for r in results if r.get("match") is False)
     errors = sum(1 for r in results if r.get("error"))
-    passed = sum(1 for s in valid_scores if s >= threshold)
-    failed = sum(1 for s in valid_scores if s < threshold)
-    avg_score = round(sum(valid_scores) / len(valid_scores), 2) if valid_scores else 0
-    median_score = sorted(valid_scores)[len(valid_scores) // 2] if valid_scores else 0
-
-    # Score distribution (0-10)
-    distribution = {i: 0 for i in range(0, 11)}
-    for s in valid_scores:
-        distribution[s] += 1
 
     metadata.update({
         "total_samples": total,
-        "passed": passed,
-        "failed": failed,
+        "preserved": preserved,
+        "not_preserved": not_preserved,
         "errors": errors,
-        "pass_rate": round(passed / len(valid_scores) * 100, 1) if valid_scores else 0,
-        "avg_score": avg_score,
-        "median_score": median_score,
-        "threshold": threshold,
-        "distribution": distribution,
+        "preservation_rate": round(preserved / total * 100, 1) if total > 0 else 0,
     })
 
     # JSON report
@@ -722,12 +689,12 @@ def generate_preservation_reports(results, metadata, entries_map, report_dir,
     # CSV report
     csv_path = report_dir / "results.csv"
     with open(csv_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["filename", "score", "reason"])
+        writer = csv.DictWriter(f, fieldnames=["filename", "match", "reason"])
         writer.writeheader()
         for r in results:
             writer.writerow({
                 "filename": r["filename"],
-                "score": r.get("score", ""),
+                "match": r.get("match", ""),
                 "reason": r.get("reason", ""),
             })
 
@@ -740,25 +707,21 @@ def generate_preservation_reports(results, metadata, entries_map, report_dir,
 
 
 def _generate_preservation_html(results, metadata, image_dirs, output_path):
-    """Generate a self-contained HTML report for preservation scoring results."""
+    """Generate a self-contained HTML report for face identity preservation results."""
     elapsed = metadata.get("elapsed_time_sec", 0)
     hours, remainder = divmod(int(elapsed), 3600)
     minutes, seconds = divmod(remainder, 60)
     elapsed_str = f"{hours}h {minutes}m {seconds}s"
-    threshold = metadata.get("threshold", 7)
 
     results_json = json.dumps(results, ensure_ascii=False)
     image_dirs_json = json.dumps(image_dirs or {}, ensure_ascii=False)
-    dist = metadata.get("distribution", {})
-    dist_labels = json.dumps([str(i) for i in range(0, 11)])
-    dist_values = json.dumps([dist.get(i, 0) for i in range(0, 11)])
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Non-Hair Preservation Scoring Report</title>
+<title>Face Identity Preservation Report</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -767,18 +730,16 @@ def _generate_preservation_html(results, metadata, image_dirs, output_path):
   h1 {{ text-align: center; margin-bottom: 10px; color: #1a1a2e; }}
   .meta {{ text-align: center; color: #666; margin-bottom: 30px; font-size: 14px; }}
 
-  .dashboard {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }}
+  .dashboard {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }}
   .card {{ background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
   .card h3 {{ margin-bottom: 12px; color: #1a1a2e; font-size: 16px; }}
   .stat-big {{ font-size: 48px; font-weight: 700; }}
   .stat-label {{ color: #666; font-size: 14px; }}
-  .color-pass {{ color: #2ecc71; }}
-  .color-fail {{ color: #e74c3c; }}
-  .color-avg {{ color: #3498db; }}
+  .color-match {{ color: #2ecc71; }}
+  .color-unmatch {{ color: #e74c3c; }}
 
-  .chart-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }}
+  .chart-row {{ display: grid; grid-template-columns: 1fr; gap: 20px; margin-bottom: 30px; max-width: 400px; margin-left: auto; margin-right: auto; }}
   .chart-card {{ background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
-  @media (max-width: 768px) {{ .chart-row {{ grid-template-columns: 1fr; }} }}
 
   .controls {{ background: #fff; border-radius: 12px; padding: 16px 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }}
   .controls input, .controls select {{ padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }}
@@ -793,10 +754,9 @@ def _generate_preservation_html(results, metadata, image_dirs, output_path):
   .sample-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }}
   .sample-filename {{ font-weight: 600; font-size: 16px; }}
   .sample-badge {{ padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }}
-  .badge-pass {{ background: #d4edda; color: #155724; }}
-  .badge-fail {{ background: #f8d7da; color: #721c24; }}
+  .badge-match {{ background: #d4edda; color: #155724; }}
+  .badge-unmatch {{ background: #f8d7da; color: #721c24; }}
   .badge-error {{ background: #fff3cd; color: #856404; }}
-  .score-display {{ font-size: 28px; font-weight: 700; margin-right: 8px; }}
   .image-row {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }}
   .image-col {{ text-align: center; }}
   .image-col img {{ width: 100%; border-radius: 8px; border: 1px solid #eee; min-height: 150px; background: #f0f0f0; }}
@@ -807,10 +767,9 @@ def _generate_preservation_html(results, metadata, image_dirs, output_path):
 </head>
 <body>
 <div class="container">
-  <h1>Non-Hair Preservation Scoring Report</h1>
+  <h1>Face Identity Preservation Report</h1>
   <div class="meta">
     Model: {metadata.get('model', '')} |
-    Threshold: {threshold} |
     Generated: {metadata.get('timestamp', '')} |
     Duration: {elapsed_str}
   </div>
@@ -821,30 +780,21 @@ def _generate_preservation_html(results, metadata, image_dirs, output_path):
       <div class="stat-big">{metadata['total_samples']}</div>
     </div>
     <div class="card">
-      <h3>Avg Score</h3>
-      <div class="stat-big color-avg">{metadata['avg_score']}</div>
-      <div class="stat-label">median: {metadata['median_score']}</div>
+      <h3>Preserved</h3>
+      <div class="stat-big color-match">{metadata['preserved']}</div>
+      <div class="stat-label">{metadata['preservation_rate']}%</div>
     </div>
     <div class="card">
-      <h3 id="passedLabel">Passed (>= {threshold})</h3>
-      <div class="stat-big color-pass" id="passedCount">{metadata['passed']}</div>
-      <div class="stat-label" id="passedRate">{metadata['pass_rate']}%</div>
-    </div>
-    <div class="card">
-      <h3 id="failedLabel">Failed (< {threshold})</h3>
-      <div class="stat-big color-fail" id="failedCount">{metadata['failed']}</div>
-      <div class="stat-label" id="failedRate">{round(100 - metadata['pass_rate'], 1)}%</div>
+      <h3>Not Preserved</h3>
+      <div class="stat-big color-unmatch">{metadata['not_preserved']}</div>
+      <div class="stat-label">{round(100 - metadata['preservation_rate'], 1)}%</div>
     </div>
     {"<div class='card'><h3>Errors</h3><div class='stat-big' style='color:#f39c12'>" + str(metadata['errors']) + "</div></div>" if metadata.get('errors', 0) > 0 else ""}
   </div>
 
   <div class="chart-row">
     <div class="chart-card">
-      <h3>Score Distribution</h3>
-      <canvas id="barChart"></canvas>
-    </div>
-    <div class="chart-card">
-      <h3>Pass / Fail</h3>
+      <h3>Preserved / Not Preserved</h3>
       <canvas id="pieChart"></canvas>
     </div>
   </div>
@@ -853,43 +803,10 @@ def _generate_preservation_html(results, metadata, image_dirs, output_path):
     <div class="radio-group">
       <input type="radio" id="filterAll" name="filter" value="all" checked onchange="applyFilter()">
       <label for="filterAll">All</label>
-      <input type="radio" id="filterPass" name="filter" value="pass" onchange="applyFilter()">
-      <label for="filterPass">Passed</label>
-      <input type="radio" id="filterFail" name="filter" value="fail" onchange="applyFilter()">
-      <label for="filterFail">Failed</label>
-    </div>
-    <div>
-      <label>Score: </label>
-      <select id="scoreFilter" onchange="applyFilter()">
-        <option value="all">All</option>
-        <option value="0">0</option>
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="5">5</option>
-        <option value="6">6</option>
-        <option value="7">7</option>
-        <option value="8">8</option>
-        <option value="9">9</option>
-        <option value="10">10</option>
-      </select>
-    </div>
-    <div>
-      <label>Threshold: </label>
-      <select id="thresholdSelect" onchange="onThresholdChange()">
-        <option value="0">0</option>
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="5">5</option>
-        <option value="6">6</option>
-        <option value="7" selected>7</option>
-        <option value="8">8</option>
-        <option value="9">9</option>
-        <option value="10">10</option>
-      </select>
+      <input type="radio" id="filterMatch" name="filter" value="match" onchange="applyFilter()">
+      <label for="filterMatch">Preserved</label>
+      <input type="radio" id="filterUnmatch" name="filter" value="unmatch" onchange="applyFilter()">
+      <label for="filterUnmatch">Not Preserved</label>
     </div>
     <div>
       <label>Search: </label>
@@ -898,10 +815,10 @@ def _generate_preservation_html(results, metadata, image_dirs, output_path):
     <div>
       <label>Sort: </label>
       <select id="sortSelect" onchange="applyFilter()">
-        <option value="score-asc">Score (low -> high)</option>
-        <option value="score-desc">Score (high -> low)</option>
         <option value="name-asc">Filename (A -> Z)</option>
         <option value="name-desc">Filename (Z -> A)</option>
+        <option value="unmatch-first">Not Preserved first</option>
+        <option value="match-first">Preserved first</option>
       </select>
     </div>
   </div>
@@ -916,57 +833,14 @@ def _generate_preservation_html(results, metadata, image_dirs, output_path):
 <script>
 const RESULTS = {results_json};
 const IMAGE_DIRS = {image_dirs_json};
-let currentThreshold = {threshold};
+const preservedCount = {metadata['preserved']};
+const notPreservedCount = {metadata['not_preserved']};
 
-const distLabels = {dist_labels};
-const distValues = {dist_values};
-
-// Bar chart
-const barChart = new Chart(document.getElementById('barChart'), {{
-  type: 'bar',
-  data: {{ labels: distLabels, datasets: [{{ label: 'Count', data: distValues, backgroundColor: distLabels.map(l => parseInt(l) >= currentThreshold ? '#2ecc71' : '#e74c3c') }}] }},
-  options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }}, scales: {{ y: {{ beginAtZero: true, ticks: {{ stepSize: 1 }} }} }} }}
-}});
-
-// Pie chart
-const validScores = RESULTS.filter(r => r.score !== null).map(r => r.score);
-const pieChart = new Chart(document.getElementById('pieChart'), {{
+new Chart(document.getElementById('pieChart'), {{
   type: 'doughnut',
-  data: {{ labels: ['Passed', 'Failed'], datasets: [{{ data: [0, 0], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
+  data: {{ labels: ['Preserved', 'Not Preserved'], datasets: [{{ data: [preservedCount, notPreservedCount], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
   options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
 }});
-
-// Set initial threshold selector
-document.getElementById('thresholdSelect').value = currentThreshold;
-
-function recalcStats() {{
-  const passed = validScores.filter(s => s >= currentThreshold).length;
-  const failed = validScores.filter(s => s < currentThreshold).length;
-  const passRate = validScores.length > 0 ? (passed / validScores.length * 100).toFixed(1) : '0.0';
-  const failRate = validScores.length > 0 ? (100 - parseFloat(passRate)).toFixed(1) : '0.0';
-
-  // Update dashboard cards
-  document.getElementById('passedCount').textContent = passed;
-  document.getElementById('passedRate').textContent = passRate + '%';
-  document.getElementById('passedLabel').textContent = 'Passed (>= ' + currentThreshold + ')';
-  document.getElementById('failedCount').textContent = failed;
-  document.getElementById('failedRate').textContent = failRate + '%';
-  document.getElementById('failedLabel').textContent = 'Failed (< ' + currentThreshold + ')';
-
-  // Update bar chart colors
-  barChart.data.datasets[0].backgroundColor = distLabels.map(l => parseInt(l) >= currentThreshold ? '#2ecc71' : '#e74c3c');
-  barChart.update();
-
-  // Update pie chart
-  pieChart.data.datasets[0].data = [passed, failed];
-  pieChart.update();
-}}
-
-function onThresholdChange() {{
-  currentThreshold = parseInt(document.getElementById('thresholdSelect').value);
-  recalcStats();
-  applyFilter();
-}}
 
 const PAGE_SIZE = 10;
 let filteredResults = [];
@@ -978,25 +852,13 @@ function buildImagePath(dir, filename) {{
   return 'file:///' + base + '/' + filename;
 }}
 
-function scoreColor(score) {{
-  if (score >= 8) return '#2ecc71';
-  if (score >= currentThreshold) return '#27ae60';
-  if (score >= 5) return '#f39c12';
-  return '#e74c3c';
-}}
-
 function renderCard(item) {{
+  const isMatch = item.match === true;
   const isError = item.error === true;
-  const score = item.score;
-  const passed = score !== null && score >= currentThreshold;
   let badge;
   if (isError) badge = '<span class="sample-badge badge-error">ERROR</span>';
-  else if (passed) badge = '<span class="sample-badge badge-pass">PASS</span>';
-  else badge = '<span class="sample-badge badge-fail">FAIL</span>';
-
-  const scoreHtml = score !== null
-    ? `<span class="score-display" style="color:${{scoreColor(score)}}">${{score}}</span>`
-    : '';
+  else if (isMatch) badge = '<span class="sample-badge badge-match">PRESERVED</span>';
+  else badge = '<span class="sample-badge badge-unmatch">NOT PRESERVED</span>';
 
   let imagesHtml = '';
   if (IMAGE_DIRS.input && IMAGE_DIRS.output) {{
@@ -1009,7 +871,7 @@ function renderCard(item) {{
   const reasonHtml = item.reason ? `<div class="reason-text">${{item.reason}}</div>` : '';
 
   return `<div class="sample-card">
-    <div class="sample-header"><span class="sample-filename">${{item.filename}}</span><div>${{scoreHtml}}${{badge}}</div></div>
+    <div class="sample-header"><span class="sample-filename">${{item.filename}}</span>${{badge}}</div>
     ${{imagesHtml}}${{reasonHtml}}
   </div>`;
 }}
@@ -1032,24 +894,20 @@ function loadMore() {{
 function applyFilter() {{
   const search = document.getElementById('searchInput').value.toLowerCase();
   const filter = document.querySelector('input[name="filter"]:checked').value;
-  const scoreFilterVal = document.getElementById('scoreFilter').value;
   const sortBy = document.getElementById('sortSelect').value;
 
   filteredResults = RESULTS.filter(r => {{
-    if (filter === 'pass' && (r.score === null || r.score < currentThreshold)) return false;
-    if (filter === 'fail' && (r.score === null || r.score >= currentThreshold)) return false;
-    if (scoreFilterVal !== 'all' && r.score !== parseInt(scoreFilterVal)) return false;
+    if (filter === 'match' && r.match !== true) return false;
+    if (filter === 'unmatch' && r.match !== false) return false;
     if (search && !r.filename.toLowerCase().includes(search)) return false;
     return true;
   }});
 
   filteredResults.sort((a, b) => {{
-    const sa = a.score === null ? -1 : a.score;
-    const sb = b.score === null ? -1 : b.score;
-    if (sortBy === 'score-asc') return sa - sb;
-    if (sortBy === 'score-desc') return sb - sa;
     if (sortBy === 'name-asc') return a.filename.localeCompare(b.filename);
     if (sortBy === 'name-desc') return b.filename.localeCompare(a.filename);
+    if (sortBy === 'unmatch-first') return (a.match === true ? 1 : 0) - (b.match === true ? 1 : 0);
+    if (sortBy === 'match-first') return (a.match === true ? 0 : 1) - (b.match === true ? 0 : 1);
     return 0;
   }});
 
@@ -1063,7 +921,6 @@ new IntersectionObserver(entries => {{
   if (entries[0].isIntersecting) loadMore();
 }}, {{ rootMargin: '400px 0px' }}).observe(sentinel);
 
-recalcStats();
 applyFilter();
 </script>
 </body>
@@ -1084,7 +941,7 @@ def main():
 
     logger = logging.getLogger(__name__)
     logger.info("=" * 60)
-    logger.info("Non-Hair Preservation Scoring Validator (INPUT vs OUTPUT)")
+    logger.info("Face Identity Preservation Validator (INPUT vs OUTPUT)")
     logger.info("=" * 60)
 
     # Ensure package is importable
@@ -1189,7 +1046,6 @@ def main():
     report_paths = generate_preservation_reports(
         results, metadata, entries_map,
         report_dir=Path(args.report_dir),
-        threshold=args.threshold,
         image_dirs=image_dirs,
     )
 
@@ -1206,14 +1062,12 @@ def main():
     meta = report_paths["metadata"]
     logger.info("=" * 60)
     logger.info("Validation Complete!")
-    logger.info(f"  Total:      {meta['total_samples']}")
-    logger.info(f"  Avg Score:  {meta['avg_score']} (median: {meta['median_score']})")
-    logger.info(f"  Passed:     {meta['passed']} ({meta['pass_rate']}%)")
-    logger.info(f"  Failed:     {meta['failed']}")
+    logger.info(f"  Total:          {meta['total_samples']}")
+    logger.info(f"  Preserved:      {meta['preserved']} ({meta['preservation_rate']}%)")
+    logger.info(f"  Not Preserved:  {meta['not_preserved']}")
     if meta.get("errors", 0) > 0:
-        logger.info(f"  Errors:     {meta['errors']}")
-    logger.info(f"  Threshold:  {meta['threshold']}")
-    logger.info(f"  Reports:    {Path(args.report_dir).resolve()}")
+        logger.info(f"  Errors:         {meta['errors']}")
+    logger.info(f"  Reports:        {Path(args.report_dir).resolve()}")
     logger.info("=" * 60)
 
 
