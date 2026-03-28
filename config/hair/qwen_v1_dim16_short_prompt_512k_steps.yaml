@@ -17,7 +17,7 @@ config:
       save:
         dtype: float16 # precision to save
         save_every: 5000 # save every this many steps
-        max_step_saves_to_keep: 1000 # how many intermittent saves to keep
+        max_step_saves_to_keep: 100 # how many intermittent saves to keep
       datasets:
         # datasets are a folder of images. captions need to be txt files with the same name as the image
         # for instance image2.jpg and image2.txt. Only jpg, jpeg, and png are supported currently
