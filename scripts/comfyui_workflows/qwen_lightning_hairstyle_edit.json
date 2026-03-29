@@ -162,7 +162,7 @@
   },
   "134": {
     "inputs": {
-      "lora_name": "qwen_v1_dim16_short_prompt_512k_steps_000005000.safetensors",
+      "lora_name": "multi_ref_hair_try_on_qwen_dim16_p512-756-1024_32k_steps.safetensors",
       "strength_model": 1,
       "model": [
         "132",
@@ -215,7 +215,7 @@
   },
   "141": {
     "inputs": {
-      "prompt": "change only the hairstyle of the person in Image 1 to match the hairstyle of the person in Image 2.",
+      "prompt": "change only the hairstyle of the person on the image 1 to match the hairstyle of the person on the image 2, keep only the person on the image 1, and remove the person on the image 2.",
       "clip": [
         "142",
         0
