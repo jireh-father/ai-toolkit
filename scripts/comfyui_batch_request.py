@@ -488,6 +488,7 @@ def batch_request_qwen_hairstyle_edit(
     num_gens: int,
     force_request: bool = False,
     cookie: str = None,
+    target_keywords: list[str] = None,
 ) -> dict[str, str]:
     """
     qwen_hairstyle_edit 워크플로우를 위한 배치 요청 함수입니다.
@@ -507,11 +508,21 @@ def batch_request_qwen_hairstyle_edit(
     """
     # 이미지 파일 목록 가져오기
     image_files = get_image_files(image_dir)
-    
+
     if len(image_files) < 2:
         print(f"경고: 최소 2개의 이미지 파일이 필요합니다. 현재: {len(image_files)}개")
         return {}
-    
+
+    # target_keywords가 있으면 reference 후보를 키워드 매칭 파일로 제한
+    if target_keywords:
+        ref_files = [f for f in image_files if any(kw in os.path.basename(f) for kw in target_keywords)]
+        print(f"총 {len(image_files)}개의 이미지 파일 중 target_keywords 매칭: {len(ref_files)}개 (reference 후보)")
+        if not ref_files:
+            print(f"경고: target_keywords {target_keywords}에 매칭되는 파일이 없습니다.")
+            return {}
+    else:
+        ref_files = image_files
+
     print(f"총 {len(image_files)}개의 이미지 파일을 발견했습니다.")
     print(f"{num_gens}개의 워크플로우를 생성합니다.")
     
@@ -526,10 +537,11 @@ def batch_request_qwen_hairstyle_edit(
     skipped_count = 0
     
     for gen_idx in range(num_gens):
-        # 랜덤으로 2개의 이미지 선택
-        selected_images = random.sample(image_files, 2)
-        image_path1 = selected_images[0]
-        image_path2 = selected_images[1]
+        # 랜덤으로 이미지 선택: input은 전체에서, reference는 ref_files에서
+        image_path1 = random.choice(image_files)
+        image_path2 = random.choice(ref_files)
+        while image_path2 == image_path1:
+            image_path2 = random.choice(ref_files)
         
         # 파일명 생성을 위한 이름 추출
         image1_name = os.path.splitext(os.path.basename(image_path1))[0]
@@ -762,6 +774,14 @@ def main():
         default=None,
         help='ComfyUI 인증 쿠키 (예: "session=abc123")'
     )
+
+    parser.add_argument(
+        '--target_keywords',
+        type=str,
+        nargs='+',
+        default=None,
+        help='reference 이미지 선정시 파일명에 포함되어야 할 키워드 목록 (예: --target_keywords 단발 숏컷)'
+    )
     
     args = parser.parse_args()
 
@@ -810,7 +830,8 @@ def main():
             output_dir=args.output_dir,
             num_gens=args.num_gens,
             force_request=args.force_request,
-            cookie=args.cookie
+            cookie=args.cookie,
+            target_keywords=args.target_keywords
         )
     else:
         results = batch_request_to_comfyui(
