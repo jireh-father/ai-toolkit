@@ -215,7 +215,7 @@
   },
   "141": {
     "inputs": {
-      "prompt": "change only the hairstyle of the person in Image 1 to match the hairstyle of the person in Image 2.",
+      "prompt": "change only the hairstyle of the person on the image 1 to match the hairstyle of the person on the image 2, keep only the person on the image 1, and remove the person on the image 2.",
       "clip": [
         "142",
         0
