@@ -198,6 +198,9 @@ class BaseSDTrainProcess(BaseTrainProcess):
             if self.model_config.is_xl and not self.adapter_config.adapter_type.endswith('_xl'):
                 self.adapter_config.adapter_type += '_xl'
 
+        # resume from existing lora weights
+        self.resume_lora_path = self.get_conf('resume_lora_path', None)
+
         # to hold network if there is one
         self.network: Union[Network, None] = None
         self.adapter: Union[T2IAdapter, IPAdapter, ClipVisionAdapter, ReferenceAdapter, CustomAdapter, ControlNetModel, None] = None
@@ -1758,6 +1761,16 @@ class BaseSDTrainProcess(BaseTrainProcess):
                     self.train_config.train_text_encoder,
                     self.train_config.train_unet
                 )
+
+                # resume from existing lora weights
+                if self.resume_lora_path is not None:
+                    if os.path.exists(self.resume_lora_path):
+                        print_acc(f"Resuming LoRA weights from: {self.resume_lora_path}")
+                        self.network.load_weights(self.resume_lora_path)
+                        self.load_training_state_from_metadata(self.resume_lora_path)
+                        print_acc(f"LoRA weights loaded. Resuming from step {self.step_num}")
+                    else:
+                        raise FileNotFoundError(f"resume_lora_path not found: {self.resume_lora_path}")
 
                 # we cannot merge in if quantized
                 if self.model_config.quantize or self.model_config.layer_offloading:
