@@ -162,7 +162,7 @@
   },
   "134": {
     "inputs": {
-      "lora_name": "multi_ref_hair_try_on_qwen_dim16_p512-756-1024_32k_steps.safetensors",
+      "lora_name": "qwen_v1_dim16_short_prompt_512k_steps_000005000.safetensors",
       "strength_model": 1,
       "model": [
         "132",
