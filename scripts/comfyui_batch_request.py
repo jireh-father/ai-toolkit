@@ -515,7 +515,7 @@ def batch_request_qwen_hairstyle_edit(
 
     # target_keywords가 있으면 reference 후보를 키워드 매칭 파일로 제한
     if target_keywords:
-        ref_files = [f for f in image_files if any(kw in os.path.basename(f) for kw in target_keywords)]
+        ref_files = [f for f in image_files if any(kw.lower() in os.path.basename(f).lower() for kw in target_keywords)]
         print(f"총 {len(image_files)}개의 이미지 파일 중 target_keywords 매칭: {len(ref_files)}개 (reference 후보)")
         if not ref_files:
             print(f"경고: target_keywords {target_keywords}에 매칭되는 파일이 없습니다.")
