@@ -3,7 +3,7 @@
     "inputs": {
       "seed": 183311042503565,
       "steps": 30,
-      "cfg": 2,
+      "cfg": 1,
       "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1,
@@ -61,7 +61,6 @@
         "134",
         0
       ]
-      
     },
     "class_type": "ModelSamplingAuraFlow",
     "_meta": {
@@ -163,7 +162,7 @@
   },
   "134": {
     "inputs": {
-      "lora_name": "multi_ref_hair_try_on_qwen_dim16_p512-756-1024_32k_steps.safetensors",
+      "lora_name": "qwen_v1_dim16_short_prompt_512k_steps_000009000.safetensors",
       "strength_model": 1,
       "model": [
         "132",
