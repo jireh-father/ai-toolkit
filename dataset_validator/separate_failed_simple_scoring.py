@@ -124,8 +124,8 @@ def _copy_files(filenames, input_dir, reference_dir, output_dir, dest_dir, op_fu
 def main():
     args = parse_args()
 
-    if args.failed_dir is None and args.passed_dir is None:
-        logger.error("At least one of --failed-dir or --passed-dir must be specified")
+    if args.passed_dir is None:
+        logger.error("--passed-dir must be specified")
         sys.exit(1)
 
     # Load report

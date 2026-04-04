@@ -16,6 +16,8 @@ FACE_LABEL_INDICES = [2, 6, 7, 8, 9, 10, 11, 12, 13]
 # face(skin), rb(right brow), lb(left brow), re(right eye), le(left eye),
 # nose, imouth, llip(lower lip), ulip(upper lip)
 
+HAIR_LABEL_INDEX = 14
+
 
 class FaceSegmentor:
     """Face segmentation using facer's FaRL model."""
@@ -84,6 +86,39 @@ class FaceSegmentor:
             return None
 
         return mask
+
+    def get_hair_mask(self, parse_result: dict) -> np.ndarray | None:
+        """Extract boolean hair mask from parsing result.
+
+        Args:
+            parse_result: output from self.parse()
+
+        Returns:
+            (H, W) boolean numpy array, or None if mask is empty.
+        """
+        logits = parse_result["seg_logits"]  # (1, C, H, W)
+        seg_map = logits.argmax(dim=1).squeeze(0).cpu().numpy()  # (H, W)
+
+        mask = seg_map == HAIR_LABEL_INDEX
+
+        if mask.sum() == 0:
+            return None
+
+        return mask
+
+    def segment_hair(self, image: np.ndarray) -> np.ndarray | None:
+        """Convenience: parse image and return hair mask directly.
+
+        Args:
+            image: HWC uint8 RGB numpy array
+
+        Returns:
+            (H, W) boolean numpy array, or None if no face/hair detected.
+        """
+        result = self.parse(image)
+        if result is None:
+            return None
+        return self.get_hair_mask(result)
 
     def segment(self, image: np.ndarray) -> np.ndarray | None:
         """Convenience: parse image and return face mask directly.

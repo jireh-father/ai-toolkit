@@ -8,15 +8,22 @@ Uses multiple detection techniques optimized for AI-generated hair images:
   4. Local effective bit-depth analysis
   5. Color channel banding (Lab space chrominance steps)
 
+Supports --hair-only mode: uses FaRL face parser to extract hair mask
+and runs all detectors only within the hair region.
+
 Usage:
     python scripts/detect_banding.py --input <dir> [--threshold 0.3] [--output-dir <dir>]
+    python scripts/detect_banding.py --input <dir> --hair-only [--device cuda:0]
 
 Examples:
-    # Report only
+    # Full image analysis
     python scripts/detect_banding.py --input data/hair_output
 
-    # Report + separate files
-    python scripts/detect_banding.py --input data/hair_output --output-dir data/banding_result
+    # Hair region only (requires GPU for FaRL model)
+    python scripts/detect_banding.py --input data/hair_output --hair-only
+
+    # Hair region + separate files
+    python scripts/detect_banding.py --input data/hair_output --hair-only --output-dir data/result
 """
 
 import argparse
@@ -45,33 +52,25 @@ def _load_image(image_path: Path):
     return color, gray
 
 
-def _get_smooth_gradient_mask(gray: np.ndarray, kernel: int = 15,
+def _get_smooth_gradient_mask(gray: np.ndarray, roi_mask: np.ndarray | None = None,
+                               kernel: int = 15,
                                low: float = 3.0, high: float = 25.0) -> np.ndarray:
-    """Find smooth gradient regions: areas with gradual intensity change.
-
-    These are the regions where banding would be visible - not flat backgrounds,
-    not textures, not sharp edges. Just smooth gradients.
-    """
+    """Find smooth gradient regions within optional ROI mask."""
     img_f = gray.astype(np.float32)
     blur = cv2.GaussianBlur(img_f, (kernel, kernel), 0)
     local_std = np.sqrt(cv2.GaussianBlur((img_f - blur) ** 2, (kernel, kernel), 0))
-    return (local_std > low) & (local_std < high)
+    mask = (local_std > low) & (local_std < high)
+    if roi_mask is not None:
+        mask = mask & roi_mask
+    return mask
 
 
-def detect_gradient_bimodality(gray: np.ndarray) -> dict:
-    """Detect banding's signature: alternating flat zones and step jumps.
-
-    In smooth gradient regions, natural images have mostly small (1-2 level)
-    gradients. Banding creates a bimodal pattern: many zero-gradient pixels
-    (flat zones within a band) interspersed with small jumps (band boundaries).
-
-    Key metric: the product of near-zero ratio and step ratio captures this
-    bimodal distribution.
-    """
+def detect_gradient_bimodality(gray: np.ndarray,
+                                roi_mask: np.ndarray | None = None) -> dict:
+    """Detect banding's signature: alternating flat zones and step jumps."""
     img_f = gray.astype(np.float32)
-    sg_mask = _get_smooth_gradient_mask(gray)
+    sg_mask = _get_smooth_gradient_mask(gray, roi_mask)
 
-    # Vertical gradients in smooth regions
     grad_y = np.abs(np.diff(img_f, axis=0))
     mask_y = sg_mask[:-1, :]
     sg_grads = grad_y[mask_y]
@@ -80,20 +79,13 @@ def detect_gradient_bimodality(gray: np.ndarray) -> dict:
         return {"bimodality": 0.0, "near_zero_ratio": 0.0,
                 "step_ratio": 0.0, "smooth_gradient_area": 0.0}
 
-    # Near-zero: pixels within a flat band (gradient < 0.5)
     near_zero = float((sg_grads < 0.5).mean())
-    # Step jumps: band boundaries (gradient 2-8, distinct from JPEG noise ~1)
     steps = float(((sg_grads >= 2.0) & (sg_grads <= 8.0)).mean())
-    # Large steps (edge-like, not banding)
     large = float((sg_grads > 15.0).mean())
 
-    # Bimodality: high when both flat zones AND steps are present
     bimodality = near_zero * steps
-
-    # Staircase score: step jumps that are NOT near real edges
-    # Penalize if most energy is in large gradients (= real texture/edge)
     if large > 0.1:
-        bimodality *= 0.5  # discount if many real edges in "smooth" area
+        bimodality *= 0.5
 
     return {
         "bimodality": round(bimodality, 6),
@@ -103,34 +95,22 @@ def detect_gradient_bimodality(gray: np.ndarray) -> dict:
     }
 
 
-def detect_false_contours(gray: np.ndarray) -> dict:
-    """Detect connected false contour lines in smooth gradient regions.
-
-    Banding creates visible contour lines (like topographic maps) in areas
-    that should be smooth gradients. We detect these by finding Canny edges
-    in heavily blurred smooth regions — real edges disappear after blurring
-    but banding contours persist because they span larger areas.
-    """
+def detect_false_contours(gray: np.ndarray,
+                           roi_mask: np.ndarray | None = None) -> dict:
+    """Detect connected false contour lines in smooth gradient regions."""
     img_f = gray.astype(np.float32)
-    sg_mask = _get_smooth_gradient_mask(gray)
+    sg_mask = _get_smooth_gradient_mask(gray, roi_mask)
 
-    # Light blur to reduce JPEG noise but preserve banding structure
     blurred = cv2.GaussianBlur(img_f, (5, 5), 1.0)
-
-    # Gradient magnitude in blurred image
     grad_x = cv2.Sobel(blurred, cv2.CV_32F, 1, 0, ksize=3)
     grad_y = cv2.Sobel(blurred, cv2.CV_32F, 0, 1, ksize=3)
     grad_mag = np.sqrt(grad_x ** 2 + grad_y ** 2)
 
-    # False contours: edges in smooth regions with moderate gradient
-    # (not too weak = noise, not too strong = real edges)
     false_contour_mask = sg_mask & (grad_mag > 2.0) & (grad_mag < 20.0)
 
-    # Count connected components — banding creates long connected contour lines
     fc_uint8 = false_contour_mask.astype(np.uint8) * 255
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(fc_uint8, connectivity=8)
 
-    # Filter: only count components with significant length (area/width ratio)
     long_contours = 0
     long_contour_pixels = 0
     for i in range(1, num_labels):
@@ -138,7 +118,6 @@ def detect_false_contours(gray: np.ndarray) -> dict:
         w = max(1, stats[i, cv2.CC_STAT_WIDTH])
         h = max(1, stats[i, cv2.CC_STAT_HEIGHT])
         aspect = max(w, h) / min(w, h) if min(w, h) > 0 else 1
-        # Long, thin components = contour lines
         if area > 20 and aspect > 3:
             long_contours += 1
             long_contour_pixels += area
@@ -152,42 +131,29 @@ def detect_false_contours(gray: np.ndarray) -> dict:
     }
 
 
-def detect_residual_structure(gray: np.ndarray) -> dict:
-    """Detect banding via blur-difference residual analysis.
-
-    Heavily blur the image and subtract from original. In smooth regions:
-    - Clean image: residual is random noise (low structure)
-    - Banding image: residual shows staircase pattern (high structure)
-
-    We measure structure as the ratio of gradient energy in residual
-    vs the residual magnitude itself.
-    """
+def detect_residual_structure(gray: np.ndarray,
+                               roi_mask: np.ndarray | None = None) -> dict:
+    """Detect banding via blur-difference residual analysis."""
     img_f = gray.astype(np.float32)
-    sg_mask = _get_smooth_gradient_mask(gray)
+    sg_mask = _get_smooth_gradient_mask(gray, roi_mask)
 
-    # Heavy blur to get "ideal" smooth version
     heavy_blur = cv2.GaussianBlur(img_f, (21, 21), 5.0)
     residual = img_f - heavy_blur
 
-    # Residual in smooth regions
     res_smooth = residual[sg_mask]
     if len(res_smooth) < 500:
         return {"residual_structure": 0.0, "residual_std": 0.0}
 
     res_std = float(np.std(res_smooth))
 
-    # Structure: gradient of residual (banding residual has organized gradient)
     res_grad_y = np.abs(np.diff(residual, axis=0))
     res_grad_x = np.abs(np.diff(residual, axis=1))
 
-    # Mean gradient of residual in smooth regions
     rg_y = res_grad_y[sg_mask[:-1, :]] if sg_mask[:-1, :].sum() > 100 else np.array([0])
     rg_x = res_grad_x[sg_mask[:, :-1]] if sg_mask[:, :-1].sum() > 100 else np.array([0])
 
     res_grad_mean = float(np.mean(rg_y) + np.mean(rg_x)) / 2
 
-    # Structure ratio: if residual has high gradient relative to its std,
-    # it's organized (banding) rather than random (noise)
     if res_std > 0.1:
         structure = res_grad_mean / res_std
     else:
@@ -199,15 +165,11 @@ def detect_residual_structure(gray: np.ndarray) -> dict:
     }
 
 
-def detect_effective_bitdepth(gray: np.ndarray) -> dict:
-    """Detect posterization via local effective bit-depth analysis.
-
-    In smooth gradient patches, count unique intensity levels relative to
-    the intensity range. Banding reduces effective bit-depth because smooth
-    gradients get quantized into fewer levels.
-    """
+def detect_effective_bitdepth(gray: np.ndarray,
+                               roi_mask: np.ndarray | None = None) -> dict:
+    """Detect posterization via local effective bit-depth analysis."""
     h, w = gray.shape
-    patch_sz = 16  # smaller patches for finer detection
+    patch_sz = 16
     stride = 8
 
     low_depth_count = 0
@@ -216,14 +178,18 @@ def detect_effective_bitdepth(gray: np.ndarray) -> dict:
 
     for y in range(0, h - patch_sz, stride):
         for x in range(0, w - patch_sz, stride):
+            # Skip patches outside ROI
+            if roi_mask is not None:
+                patch_roi = roi_mask[y:y + patch_sz, x:x + patch_sz]
+                if patch_roi.mean() < 0.5:
+                    continue
+
             patch = gray[y:y + patch_sz, x:x + patch_sz]
             prange = int(patch.max()) - int(patch.min())
 
-            # Only analyze gradient patches (not flat, not textured)
             if prange < 8 or prange > 100:
                 continue
 
-            # Check if this is a smooth gradient (low local variance)
             p_std = float(np.std(patch.astype(np.float32)))
             if p_std < 2 or p_std > 30:
                 continue
@@ -231,10 +197,8 @@ def detect_effective_bitdepth(gray: np.ndarray) -> dict:
             analyzed_patches += 1
             unique = len(np.unique(patch))
 
-            # Expected: for a range of N, smooth gradient should use ~N/2 levels
             expected = max(4, prange // 2)
             ratio = unique / expected
-
             depth_ratios.append(ratio)
 
             if unique < expected * 0.4:
@@ -251,17 +215,12 @@ def detect_effective_bitdepth(gray: np.ndarray) -> dict:
     }
 
 
-def detect_color_banding(color_bgr: np.ndarray) -> dict:
-    """Detect color banding in Lab chrominance channels.
-
-    Color banding in AI-generated images often manifests as quantized
-    chrominance (a, b channels) in smooth gradient regions.
-    Focuses on step jumps in the 2-6 range (above JPEG noise, below real edges)
-    within smooth gradient regions only.
-    """
+def detect_color_banding(color_bgr: np.ndarray,
+                          roi_mask: np.ndarray | None = None) -> dict:
+    """Detect color banding in Lab chrominance channels."""
     lab = cv2.cvtColor(color_bgr, cv2.COLOR_BGR2LAB)
     gray = cv2.cvtColor(color_bgr, cv2.COLOR_BGR2GRAY)
-    sg_mask = _get_smooth_gradient_mask(gray)
+    sg_mask = _get_smooth_gradient_mask(gray, roi_mask)
 
     scores = {}
     for i, name in enumerate(["a", "b"]):
@@ -275,45 +234,54 @@ def detect_color_banding(color_bgr: np.ndarray) -> dict:
             scores[f"color_step_{name}"] = 0.0
             continue
 
-        # Step jumps distinguishable from JPEG noise
         steps = float(((ch_grads >= 2.0) & (ch_grads <= 6.0)).mean())
         scores[f"color_step_{name}"] = round(steps, 6)
 
-    # Combined color banding score
     scores["color_banding_score"] = round(
         (scores.get("color_step_a", 0) + scores.get("color_step_b", 0)) / 2, 6
     )
     return scores
 
 
-def compute_banding_score(image_path: Path) -> dict:
-    """Run all banding detection methods and compute combined score."""
+def compute_banding_score(image_path: Path,
+                           hair_segmentor=None) -> dict:
+    """Run all banding detection methods and compute combined score.
+
+    Args:
+        image_path: Path to image file.
+        hair_segmentor: Optional FaceSegmentor instance. If provided,
+            detectors run only within the hair mask region.
+    """
     color, gray = _load_image(image_path)
     if gray is None:
         return {"error": f"Cannot read image: {image_path.name}"}
 
-    # Run all detectors
-    bimod = detect_gradient_bimodality(gray)
-    fc = detect_false_contours(gray)
-    resid = detect_residual_structure(gray)
-    bitdepth = detect_effective_bitdepth(gray)
-    color_band = detect_color_banding(color)
+    # Hair mask extraction
+    roi_mask = None
+    hair_area_ratio = 0.0
+    if hair_segmentor is not None:
+        # FaceSegmentor expects RGB, cv2 loads BGR
+        rgb = cv2.cvtColor(color, cv2.COLOR_BGR2RGB)
+        hair_mask = hair_segmentor.segment_hair(rgb)
+        if hair_mask is not None and hair_mask.sum() > 500:
+            roi_mask = hair_mask
+            hair_area_ratio = float(hair_mask.mean())
+        # If no hair detected, fall back to full image
 
-    # Normalize each detector to 0-1 range with calibrated multipliers
-    # Calibration based on: banding images typically show
-    #   bimodality: 0.02-0.09, clean images: <0.01
-    #   contour_density: banding creates more long contours
-    #   residual_structure: higher for organized banding patterns
-    #   low_bitdepth_ratio: >0 when posterization is present
-    #   color_banding_score: chrominance steps in smooth regions
+    # Run all detectors with optional ROI mask
+    bimod = detect_gradient_bimodality(gray, roi_mask)
+    fc = detect_false_contours(gray, roi_mask)
+    resid = detect_residual_structure(gray, roi_mask)
+    bitdepth = detect_effective_bitdepth(gray, roi_mask)
+    color_band = detect_color_banding(color, roi_mask)
 
+    # Normalize
     n_bimod = min(1.0, bimod["bimodality"] / 0.08)
     n_contour = min(1.0, fc["contour_density"] / 0.10)
     n_resid = min(1.0, max(0, resid["residual_structure"] - 0.3) / 0.7)
     n_bitdepth = min(1.0, bitdepth["low_bitdepth_ratio"] / 0.3)
     n_color = min(1.0, color_band["color_banding_score"] / 0.12)
 
-    # Combined score with weights
     score = float(np.clip(
         0.30 * n_bimod
         + 0.25 * n_contour
@@ -323,17 +291,18 @@ def compute_banding_score(image_path: Path) -> dict:
         0, 1
     ))
 
-    return {
+    result = {
         "banding_score": round(score, 4),
-        # Normalized detector scores
         "gradient_bimodality": round(n_bimod, 4),
         "false_contour": round(n_contour, 4),
         "residual_structure": round(n_resid, 4),
         "effective_bitdepth": round(n_bitdepth, 4),
         "color_banding": round(n_color, 4),
-        # Raw details
+        "hair_mask_used": roi_mask is not None,
+        "hair_area_ratio": round(hair_area_ratio, 4),
         "details": {**bimod, **fc, **resid, **bitdepth, **color_band},
     }
+    return result
 
 
 def image_to_base64_thumbnail(path: Path, max_size: int = 256) -> str:
@@ -380,10 +349,15 @@ def generate_html_report(results: list[dict], metadata: dict, output_path: Path)
     avg_score = round(sum(scores) / len(scores), 4) if scores else 0
     std_score = round(float(np.std(scores)), 4) if scores else 0
 
+    hair_used = sum(1 for r in results if r.get("hair_mask_used"))
+    hair_fallback = sum(1 for r in results if not r.get("error") and not r.get("hair_mask_used") and metadata.get("hair_only"))
+
     detector_avgs = {}
     for key, label in SCORE_FIELDS:
         vals = [r[key] for r in results if not r.get("error") and key in r]
         detector_avgs[label] = round(sum(vals) / len(vals), 4) if vals else 0
+
+    mode_str = "Hair Region Only" if metadata.get("hair_only") else "Full Image"
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -398,7 +372,7 @@ def generate_html_report(results: list[dict], metadata: dict, output_path: Path)
   .container {{ max-width: 1400px; margin: 0 auto; padding: 20px; }}
   h1 {{ text-align: center; margin-bottom: 10px; color: #1a1a2e; }}
   .meta {{ text-align: center; color: #666; margin-bottom: 30px; font-size: 14px; }}
-  .dashboard {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }}
+  .dashboard {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }}
   .card {{ background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
   .card h3 {{ margin-bottom: 12px; color: #1a1a2e; font-size: 16px; }}
   .stat-big {{ font-size: 48px; font-weight: 700; }}
@@ -416,12 +390,15 @@ def generate_html_report(results: list[dict], metadata: dict, output_path: Path)
   .gallery-section h2 {{ margin-bottom: 16px; color: #1a1a2e; }}
   .sample-count {{ color: #666; font-size: 14px; margin-bottom: 16px; }}
   .sample-card {{ background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }}
-  .sample-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }}
+  .sample-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }}
   .sample-filename {{ font-weight: 600; font-size: 16px; word-break: break-all; }}
+  .sample-badges {{ display: flex; gap: 6px; }}
   .sample-badge {{ padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }}
   .badge-pass {{ background: #d4edda; color: #155724; }}
   .badge-fail {{ background: #f8d7da; color: #721c24; }}
   .badge-error {{ background: #fff3cd; color: #856404; }}
+  .badge-hair {{ background: #e8daef; color: #6c3483; }}
+  .badge-full {{ background: #d6eaf8; color: #2471a3; }}
   .sample-body {{ display: flex; gap: 20px; align-items: flex-start; }}
   .sample-thumb {{ flex-shrink: 0; }}
   .sample-thumb img {{ width: 200px; border-radius: 8px; border: 1px solid #eee; }}
@@ -443,10 +420,11 @@ def generate_html_report(results: list[dict], metadata: dict, output_path: Path)
 <div class="container">
   <h1>Banding / Posterization Artifact Detection Report</h1>
   <div class="meta">
-    Threshold: {metadata['threshold']} |
+    Mode: {mode_str} | Threshold: {metadata['threshold']} |
     Generated: {metadata['timestamp']} |
     Duration: {metadata['elapsed']} |
     Input: {metadata['input_dir']}
+    {"<br>Hair mask: " + str(hair_used) + " used, " + str(hair_fallback) + " fallback to full image" if metadata.get("hair_only") else ""}
   </div>
   <div class="dashboard">
     <div class="card"><h3>Total</h3><div class="stat-big">{metadata['total']}</div></div>
@@ -488,6 +466,14 @@ def generate_html_report(results: list[dict], metadata: dict, output_path: Path)
         score = r["banding_score"]
         bar_color = f"hsl({max(0, 120 - int(score * 120))}, 70%, 50%)"
 
+        # Hair/full badge
+        mask_badge = ""
+        if metadata.get("hair_only"):
+            if r.get("hair_mask_used"):
+                mask_badge = '<span class="sample-badge badge-hair">HAIR</span>'
+            else:
+                mask_badge = '<span class="sample-badge badge-full">FULL</span>'
+
         thumb = r.get("thumbnail", "")
         thumb_html = ""
         if thumb:
@@ -497,6 +483,13 @@ def generate_html_report(results: list[dict], metadata: dict, output_path: Path)
           <div class="score-bar-container">
             <div class="score-bar-label"><span><b>Combined Score</b></span><span style="font-weight:700">{score}</span></div>
             <div class="score-bar" style="height:10px"><div class="score-bar-fill" style="width:{score*100}%;background:{bar_color}"></div></div>
+          </div>"""
+
+        if r.get("hair_mask_used"):
+            bars_html += f"""
+          <div class="score-bar-container">
+            <div class="score-bar-label"><span>Hair Area</span><span>{r.get('hair_area_ratio', 0):.1%}</span></div>
+            <div class="score-bar"><div class="score-bar-fill" style="width:{r.get('hair_area_ratio', 0)*100}%;background:#8e44ad"></div></div>
           </div>"""
 
         for idx, (key, label) in enumerate(SCORE_FIELDS):
@@ -512,7 +505,10 @@ def generate_html_report(results: list[dict], metadata: dict, output_path: Path)
     <div class="sample-card gallery-item" data-status="{status}" data-filename="{r['filename']}" data-score="{score}">
       <div class="sample-header">
         <span class="sample-filename">{r['filename']}</span>
-        <span class="sample-badge {badge_class}">{badge_text}</span>
+        <div class="sample-badges">
+          {mask_badge}
+          <span class="sample-badge {badge_class}">{badge_text}</span>
+        </div>
       </div>
       <div class="sample-body">{thumb_html}
         <div class="scores-detail">{bars_html}
@@ -550,7 +546,6 @@ new Chart(document.getElementById('pieChart'), {{
   data: {{ labels: ['Clean', 'Banding'], datasets: [{{ data: [passCount, failCount], backgroundColor: ['#2ecc71', '#e74c3c'] }}] }},
   options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }}
 }});
-
 new Chart(document.getElementById('histChart'), {{
   type: 'bar',
   data: {{
@@ -564,7 +559,6 @@ new Chart(document.getElementById('histChart'), {{
   }},
   options: {{ responsive: true, scales: {{ y: {{ beginAtZero: true }} }}, plugins: {{ legend: {{ display: false }} }} }}
 }});
-
 new Chart(document.getElementById('radarChart'), {{
   type: 'radar',
   data: {{
@@ -588,7 +582,6 @@ function filterGallery() {{
   }});
   updateCount();
 }}
-
 function sortGallery() {{
   const sortBy = document.getElementById('sortSelect').value;
   const container = document.getElementById('gallery');
@@ -602,13 +595,11 @@ function sortGallery() {{
   }});
   items.forEach(item => container.appendChild(item));
 }}
-
 function updateCount() {{
   const visible = document.querySelectorAll('#gallery .gallery-item:not([style*="display: none"])');
   document.getElementById('sampleCount').textContent = 'Showing ' + visible.length + ' of {metadata["total"]} samples';
 }}
 updateCount();
-
 const lazyObserver = new IntersectionObserver((entries) => {{
   entries.forEach(entry => {{
     if (entry.isIntersecting) {{
@@ -645,6 +636,14 @@ def main():
         "--no-thumbnail", action="store_true",
         help="Skip embedding thumbnails in HTML (faster, smaller file)"
     )
+    parser.add_argument(
+        "--hair-only", action="store_true",
+        help="Use FaRL face parser to extract hair mask and analyze only hair region"
+    )
+    parser.add_argument(
+        "--device", default="cuda:0",
+        help="Device for hair segmentation model (default: cuda:0)"
+    )
     args = parser.parse_args()
 
     input_dir = Path(args.input)
@@ -662,12 +661,22 @@ def main():
 
     print(f"Found {len(image_paths)} images in {input_dir}")
     print(f"Threshold: {args.threshold}")
+    print(f"Mode: {'Hair region only' if args.hair_only else 'Full image'}")
+
+    # Initialize hair segmentor if needed
+    hair_segmentor = None
+    if args.hair_only:
+        print(f"Loading FaRL hair segmentation model on {args.device}...")
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from dataset_validator.core.face_segmentor import FaceSegmentor
+        hair_segmentor = FaceSegmentor(device=args.device)
+        print("Hair segmentation model ready")
 
     start_time = time.time()
     results = []
 
     for img_path in tqdm(image_paths, desc="Analyzing"):
-        scores = compute_banding_score(img_path)
+        scores = compute_banding_score(img_path, hair_segmentor=hair_segmentor)
         entry = {
             "filename": img_path.name,
             "filepath": str(img_path.resolve()),
@@ -692,6 +701,9 @@ def main():
     error_count = sum(1 for r in results if r.get("error"))
 
     print(f"\nResults: {clean_count} clean, {banding_count} banding, {error_count} errors")
+    if args.hair_only:
+        hair_used = sum(1 for r in results if r.get("hair_mask_used"))
+        print(f"Hair mask: {hair_used}/{len(results)} images")
     print(f"Elapsed: {elapsed_str}")
 
     metadata = {
@@ -703,6 +715,7 @@ def main():
         "errors": error_count,
         "elapsed": elapsed_str,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "hair_only": args.hair_only,
     }
 
     json_results = [{k: v for k, v in r.items() if k != "thumbnail"} for r in results]
