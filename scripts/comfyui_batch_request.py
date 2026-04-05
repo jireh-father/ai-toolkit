@@ -423,21 +423,35 @@ def modify_workflow_for_image(
         return workflow
 
 
-def modify_workflow_qwen_hairstyle_edit(workflow: dict, image_path1: str, image_path2: str, gen_index: int) -> dict:
+def modify_workflow_qwen_hairstyle_edit(
+    workflow: dict, image_path1: str, image_path2: str, gen_index: int,
+    steps: int = None, cfg: float = None,
+    unet_name: str = None, lora_name: str = None,
+    prompt: str = None,
+) -> dict:
     """
     qwen_hairstyle_edit 워크플로우를 수정합니다.
-    
+
     수정 사항:
     1. 노드 137(LoadImage): 이미지 1 파일 경로 설정
     2. 노드 78(LoadImage): 이미지 2 파일 경로 설정
     3. 노드 138(SaveImageJpg): filename_prefix 설정
-    
+    4. 노드 3(KSampler): steps, cfg 설정 (옵션)
+    5. 노드 132(UNETLoader): unet_name 설정 (옵션)
+    6. 노드 134(LoraLoaderModelOnly): lora_name 설정 (옵션)
+    7. 노드 141(TextEncodeQwenImageEditPlus): prompt 설정 (옵션)
+
     Args:
         workflow: 원본 워크플로우 딕셔너리
         image_path1: 입력 이미지 1 경로 (노드 137)
         image_path2: 입력 이미지 2 경로 (노드 78)
         gen_index: 생성 인덱스 (파일명에 사용)
-        
+        steps: KSampler steps (None이면 워크플로우 원본값 사용)
+        cfg: KSampler cfg (None이면 워크플로우 원본값 사용)
+        unet_name: UNETLoader unet_name (None이면 워크플로우 원본값 사용)
+        lora_name: LoraLoaderModelOnly lora_name (None이면 워크플로우 원본값 사용)
+        prompt: TextEncodeQwenImageEditPlus prompt (None이면 워크플로우 원본값 사용)
+
     Returns:
         수정된 워크플로우 딕셔너리
     """
@@ -471,11 +485,26 @@ def modify_workflow_qwen_hairstyle_edit(workflow: dict, image_path1: str, image_
     if "140" in modified_workflow:
         modified_workflow["140"]["inputs"]["filename_prefix"] = f"reference_image/{output_prefix}"
 
-    # 6. 노드 3(KSampler) 수정 - seed 랜덤 설정
+    # 6. 노드 3(KSampler) 수정 - seed 랜덤 설정 + steps/cfg 오버라이드
     if "3" in modified_workflow:
         modified_workflow["3"]["inputs"]["seed"] = random.randint(0, 2**64 - 1)
-    
-    
+        if steps is not None:
+            modified_workflow["3"]["inputs"]["steps"] = steps
+        if cfg is not None:
+            modified_workflow["3"]["inputs"]["cfg"] = cfg
+
+    # 7. 노드 132(UNETLoader) 수정 - unet_name 오버라이드
+    if unet_name is not None and "132" in modified_workflow:
+        modified_workflow["132"]["inputs"]["unet_name"] = unet_name
+
+    # 8. 노드 134(LoraLoaderModelOnly) 수정 - lora_name 오버라이드
+    if lora_name is not None and "134" in modified_workflow:
+        modified_workflow["134"]["inputs"]["lora_name"] = lora_name
+
+    # 9. 노드 141(TextEncodeQwenImageEditPlus) 수정 - prompt 오버라이드
+    if prompt is not None and "141" in modified_workflow:
+        modified_workflow["141"]["inputs"]["prompt"] = prompt
+
     return modified_workflow
 
 
@@ -489,11 +518,16 @@ def batch_request_qwen_hairstyle_edit(
     force_request: bool = False,
     cookie: str = None,
     target_keywords: list[str] = None,
+    steps: int = None,
+    cfg: float = None,
+    unet_name: str = None,
+    lora_name: str = None,
+    prompt: str = None,
 ) -> dict[str, str]:
     """
     qwen_hairstyle_edit 워크플로우를 위한 배치 요청 함수입니다.
     num_gens만큼 랜덤으로 2개의 이미지를 선택하여 워크플로우를 생성합니다.
-    
+
     Args:
         image_dir: 이미지 파일들이 있는 디렉토리 경로 (콤마로 구분 가능)
         workflow_path: ComfyUI 워크플로우 JSON 파일 경로
@@ -502,7 +536,12 @@ def batch_request_qwen_hairstyle_edit(
         output_dir: 출력 이미지 디렉토리 경로
         num_gens: 생성할 워크플로우 수
         force_request: True면 무조건 요청, False면 output_dir에 파일 존재시 스킵
-        
+        steps: KSampler steps (None이면 워크플로우 원본값)
+        cfg: KSampler cfg (None이면 워크플로우 원본값)
+        unet_name: UNETLoader unet_name (None이면 워크플로우 원본값)
+        lora_name: LoraLoaderModelOnly lora_name (None이면 워크플로우 원본값)
+        prompt: TextEncodeQwenImageEditPlus prompt (None이면 워크플로우 원본값)
+
     Returns:
         이미지 경로와 prompt_id 매핑 딕셔너리
     """
@@ -564,7 +603,12 @@ def batch_request_qwen_hairstyle_edit(
             workflow=base_workflow,
             image_path1=image_path1,
             image_path2=image_path2,
-            gen_index=gen_idx
+            gen_index=gen_idx,
+            steps=steps,
+            cfg=cfg,
+            unet_name=unet_name,
+            lora_name=lora_name,
+            prompt=prompt,
         )
         
         if output_workflow_dir:
@@ -782,6 +826,38 @@ def main():
         default=None,
         help='reference 이미지 선정시 파일명에 포함되어야 할 키워드 목록 (예: --target_keywords 단발 숏컷)'
     )
+
+    # qwen_hairstyle_edit / qwen_lightning_hairstyle_edit 전용 옵션
+    parser.add_argument(
+        '--steps',
+        type=int,
+        default=4,
+        help='KSampler steps (qwen_hairstyle_edit 전용, 기본값: 워크플로우 원본값)'
+    )
+    parser.add_argument(
+        '--cfg',
+        type=float,
+        default=1,
+        help='KSampler cfg (qwen_hairstyle_edit 전용, 기본값: 워크플로우 원본값)'
+    )
+    parser.add_argument(
+        '--unet_name',
+        type=str,
+        default="qwen_image_edit_2511_fp8_e4m3fn_scaled_lightning_comfyui_4steps_v1.0.safetensors",
+        help='UNETLoader unet_name (qwen_hairstyle_edit 전용, 기본값: 워크플로우 원본값)'
+    )
+    parser.add_argument(
+        '--lora_name',
+        type=str,
+        default=None,
+        help='LoraLoaderModelOnly lora_name (qwen_hairstyle_edit 전용, 기본값: 워크플로우 원본값)'
+    )
+    parser.add_argument(
+        '--prompt',
+        type=str,
+        default="change only the hairstyle of the person in Image 1 to match the hairstyle of the person in Image 2.",
+        help='TextEncodeQwenImageEditPlus prompt (qwen_hairstyle_edit 전용, 기본값: 워크플로우 원본값)'
+    )
     
     args = parser.parse_args()
 
@@ -816,6 +892,17 @@ def main():
     print(f"출력 디렉토리: {args.output_dir}")
     print(f"강제 요청: {args.force_request}")
     print(f"ComfyUI 호스트: {', '.join(args.comfyui_hosts)}")
+    if args.workflow_type in ["qwen_hairstyle_edit", "qwen_lightning_hairstyle_edit"]:
+        if args.steps is not None:
+            print(f"KSampler steps: {args.steps}")
+        if args.cfg is not None:
+            print(f"KSampler cfg: {args.cfg}")
+        if args.unet_name is not None:
+            print(f"UNETLoader unet_name: {args.unet_name}")
+        if args.lora_name is not None:
+            print(f"LoraLoader lora_name: {args.lora_name}")
+        if args.prompt is not None:
+            print(f"Prompt: {args.prompt}")
     print("=" * 60)
 
     random.seed(args.seed)
@@ -831,7 +918,12 @@ def main():
             num_gens=args.num_gens,
             force_request=args.force_request,
             cookie=args.cookie,
-            target_keywords=args.target_keywords
+            target_keywords=args.target_keywords,
+            steps=args.steps,
+            cfg=args.cfg,
+            unet_name=args.unet_name,
+            lora_name=args.lora_name,
+            prompt=args.prompt,
         )
     else:
         results = batch_request_to_comfyui(
