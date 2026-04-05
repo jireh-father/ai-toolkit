@@ -29,17 +29,19 @@ from PIL import Image
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
 
-SCORING_PROMPT = """You are a strict hairstyle comparison expert.
+SCORING_PROMPT = """You are a strict hairstyle comparison and image quality expert.
 
 Above you see two images: [REFERENCE] and [OUTPUT].
 - REFERENCE = the target hairstyle.
 - OUTPUT = the result image that should replicate the REFERENCE hairstyle.
 
-The two images may have different camera angles, lighting, or show different people. Ignore these differences. Focus ONLY on the hairstyle itself.
+The two images may have different camera angles, lighting, or show different people. Ignore these differences.
 
-TASK: Score how well OUTPUT's hairstyle matches REFERENCE's hairstyle on a 1-10 scale.
+TASK: Score the OUTPUT image on a 1-10 scale based on TWO criteria:
+(A) How well OUTPUT's hairstyle matches REFERENCE's hairstyle.
+(B) How natural and high-quality the hair looks in the OUTPUT image.
 
-Compare ALL of the following aspects carefully:
+=== (A) HAIRSTYLE SIMILARITY — Compare ALL of the following: ===
 - Overall hairstyle shape and silhouette
 - Hair color (including highlights, roots, gradient, tone)
 - Hair length (short, medium, long)
@@ -50,18 +52,29 @@ Compare ALL of the following aspects carefully:
 - Flow direction and styling
 - Hair detail quality (strand-level detail, flyaway hairs, natural layering)
 
+=== (B) HAIR NATURALNESS & QUALITY in OUTPUT — Check ALL of the following: ===
+- Does the hair look like real, natural hair? (no plastic/painted/artificial look)
+- Are individual hair strands visible and realistic? (not blobby or smeared)
+- Does the hair color blend naturally with the person's face skin tone?
+- Does the hair match the overall photo tone, lighting, and color temperature?
+- Are there any visible artifacts? (banding, color posterization, unnatural edges, halo effects)
+- Does the hair-to-face boundary look seamless and natural?
+- Is the hair consistent in quality throughout? (no blurry patches mixed with sharp areas)
+
+IMPORTANT: Both criteria matter equally. A perfect hairstyle match with unnatural or artifact-ridden hair should score low. Natural-looking hair with a wrong hairstyle should also score low.
+
 SCORING GUIDE (be honest, not generous):
-- 1-2: Completely different hairstyle (wrong style, color, and length)
-- 3-4: Major differences (e.g. correct color but wrong length/style, or correct style but wrong color)
-- 5: Partially similar but with multiple obvious differences
-- 6: Recognizably similar style with notable flaws (e.g. color tone off, volume mismatch, texture difference)
-- 7: Good match with minor differences (e.g. slight color shift, small shape deviation)
-- 8: Very good match, only subtle differences visible on close inspection
-- 9: Near perfect, almost indistinguishable hairstyle
-- 10: Perfect match in every aspect (extremely rare)
+- 1-2: Completely wrong hairstyle AND/OR extremely unnatural hair (obvious artifacts, plastic look)
+- 3-4: Major hairstyle differences OR significantly unnatural hair quality
+- 5: Partially similar hairstyle but with multiple obvious differences or noticeable quality issues
+- 6: Recognizably similar style but with notable flaws (color tone off, volume mismatch, or mild artifacts/unnatural appearance)
+- 7: Good hairstyle match with minor differences, hair looks mostly natural with only small quality issues
+- 8: Very good match, hair looks natural, only subtle differences or minor quality flaws on close inspection
+- 9: Near perfect hairstyle match, hair looks completely natural and blends perfectly with face/photo tone
+- 10: Perfect match in every aspect with flawless natural quality (extremely rare)
 
 Respond with ONLY a JSON object, no other text:
-{"score": <1-10>, "reason": "<1-2 sentences explaining your score>"}"""
+{"score": <1-10>, "reason": "<1-2 sentences explaining your score, mentioning both similarity and naturalness>"}"""
 
 
 def setup_logging(level: str):
