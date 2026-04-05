@@ -37,7 +37,10 @@ def send_discord_message(webhook_url: str, message: str):
     req = request.Request(
         webhook_url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "ShutdownMonitor/1.0",
+        },
     )
     try:
         request.urlopen(req, timeout=10)
