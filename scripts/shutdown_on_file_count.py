@@ -106,7 +106,7 @@ def main():
                 if sys.platform == "win32":
                     os.system("shutdown /s /t 0")
                 else:
-                    os.system("sudo shutdown -h now")
+                    os.system("shutdown -h now")
                 sys.exit(0)
 
             time.sleep(args.interval)
