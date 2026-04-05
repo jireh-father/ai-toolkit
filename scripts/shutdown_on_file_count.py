@@ -268,6 +268,10 @@ def main():
         help="S3 업로드 경로 (기본값: dataset)"
     )
     parser.add_argument(
+        "--remove", action="store_true", default=False,
+        help="압축 완료 후 폴더 내용물을 삭제"
+    )
+    parser.add_argument(
         "--cloud", type=str, default=None,
         choices=["simplepod", "runpod"],
         help="클라우드 환경 (simplepod 또는 runpod, 미지정시 자동 감지)"
@@ -334,7 +338,20 @@ def main():
                     do_shutdown(cloud, simplepod_id, simplepod_api_key)
                     sys.exit(1)
 
-                # 2. S3 업로드
+                # 2. 압축 완료 후 폴더 내용물 삭제 (--remove 옵션)
+                if args.remove:
+                    print(f"폴더 내용물 삭제 시작: {args.path}")
+                    for entry in os.scandir(args.path):
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                shutil.rmtree(entry.path)
+                            else:
+                                os.remove(entry.path)
+                        except Exception as e:
+                            print(f"  삭제 실패: {entry.path} — {e}")
+                    print("폴더 내용물 삭제 완료")
+
+                # 3. S3 업로드
                 download_url = None
                 if aws_access_key and aws_secret_key and aws_bucket:
                     s3_key = f"{args.s3_prefix}/{archive_name}"
