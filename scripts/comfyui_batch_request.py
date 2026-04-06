@@ -199,7 +199,7 @@ def generate_cloth_prompt() -> str:
     return f"only change top to {cloth_length} {color} {cloth_type}"
 
 
-def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: str) -> dict:
+def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: str, output_dir: str = None) -> dict:
     """
     random_face_change 워크플로우를 수정합니다.
     
@@ -238,8 +238,9 @@ def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: 
     save_image_result = find_node_by_class_type(modified_workflow, "SaveImageJpg")
     if save_image_result:
         node_id, node = save_image_result
-        node["inputs"]["filename_prefix"] = image_name_without_ext
-    
+        prefix = os.path.join(output_dir, image_name_without_ext) if output_dir else image_name_without_ext
+        node["inputs"]["filename_prefix"] = prefix
+
     # 3. MediaPipe-FaceMeshPreprocessor 노드 수정
     face_mesh_result = find_node_by_class_type(modified_workflow, "MediaPipe-FaceMeshPreprocessor")
     if face_mesh_result:
@@ -257,7 +258,7 @@ def modify_workflow_random_face_change(workflow: dict, image_path: str, gender: 
     return modified_workflow
 
 
-def modify_workflow_random_background_change(workflow: dict, image_path: str) -> dict:
+def modify_workflow_random_background_change(workflow: dict, image_path: str, output_dir: str = None) -> dict:
     """
     random_background_change 워크플로우를 수정합니다.
     
@@ -290,8 +291,9 @@ def modify_workflow_random_background_change(workflow: dict, image_path: str) ->
     save_image_result = find_node_by_class_type(modified_workflow, "SaveImageJpg")
     if save_image_result:
         node_id, node = save_image_result
-        node["inputs"]["filename_prefix"] = image_name_without_ext
-    
+        prefix = os.path.join(output_dir, image_name_without_ext) if output_dir else image_name_without_ext
+        node["inputs"]["filename_prefix"] = prefix
+
     # 3. CLIPTextEncode 노드 수정 (랜덤 배경 프롬프트)
     clip_text_result = find_node_by_class_type(modified_workflow, "CLIPTextEncode")
     if clip_text_result:
@@ -302,7 +304,7 @@ def modify_workflow_random_background_change(workflow: dict, image_path: str) ->
     return modified_workflow
 
 
-def modify_workflow_with_prompt(workflow: dict, image_path: str, prompt: str) -> dict:
+def modify_workflow_with_prompt(workflow: dict, image_path: str, prompt: str, output_dir: str = None) -> dict:
     """
     범용 워크플로우 수정 함수입니다.
     이미지 경로와 프롬프트만 설정합니다.
@@ -337,8 +339,9 @@ def modify_workflow_with_prompt(workflow: dict, image_path: str, prompt: str) ->
     save_image_result = find_node_by_class_type(modified_workflow, "SaveImageJpg")
     if save_image_result:
         node_id, node = save_image_result
-        node["inputs"]["filename_prefix"] = image_name_without_ext
-    
+        prefix = os.path.join(output_dir, image_name_without_ext) if output_dir else image_name_without_ext
+        node["inputs"]["filename_prefix"] = prefix
+
     # 3. CLIPTextEncode 노드 수정
     clip_text_result = find_node_by_class_type_and_title(modified_workflow, "TextEncodeQwenImageEditPlus")
     if clip_text_result:
@@ -395,6 +398,7 @@ def modify_workflow_for_image(
     workflow_type: str,
     image_path: str,
     gender: str,
+    output_dir: str = None,
 ) -> dict:
     """
     워크플로우 타입에 따라 이미지 경로, MP 이미지 사이즈, 프롬프트를 동적으로 변경합니다.
@@ -411,13 +415,13 @@ def modify_workflow_for_image(
         수정된 워크플로우 딕셔너리
     """
     if workflow_type == "random_face_change":
-        return modify_workflow_random_face_change(workflow, image_path, gender)
+        return modify_workflow_random_face_change(workflow, image_path, gender, output_dir=output_dir)
     elif workflow_type == "random_background_change":
-        return modify_workflow_random_background_change(workflow, image_path)
+        return modify_workflow_random_background_change(workflow, image_path, output_dir=output_dir)
     elif workflow_type == "random_camera_angle_move":
-        return modify_workflow_with_prompt(workflow, image_path, generate_camera_angle_prompt())
+        return modify_workflow_with_prompt(workflow, image_path, generate_camera_angle_prompt(), output_dir=output_dir)
     elif workflow_type == "random_cloth_change":
-        return modify_workflow_with_prompt(workflow, image_path, generate_cloth_prompt())
+        return modify_workflow_with_prompt(workflow, image_path, generate_cloth_prompt(), output_dir=output_dir)
     else:
         # 알 수 없는 워크플로우 타입은 원본 그대로 반환
         return workflow
@@ -427,7 +431,7 @@ def modify_workflow_qwen_hairstyle_edit(
     workflow: dict, image_path1: str, image_path2: str, gen_index: int,
     steps: int = None, cfg: float = None,
     unet_name: str = None, lora_name: str = None,
-    prompt: str = None,
+    prompt: str = None, output_dir: str = None,
 ) -> dict:
     """
     qwen_hairstyle_edit 워크플로우를 수정합니다.
@@ -475,15 +479,18 @@ def modify_workflow_qwen_hairstyle_edit(
     # 3. 노드 138(SaveImageJpg) 수정 - filename_prefix 설정
     output_prefix = truncate_filename(f"{image1_name_without_ext}_{image2_name_without_ext}_{gen_index:04d}")
     if "138" in modified_workflow:
-        modified_workflow["138"]["inputs"]["filename_prefix"] = output_prefix
-    
+        prefix = os.path.join(output_dir, output_prefix) if output_dir else output_prefix
+        modified_workflow["138"]["inputs"]["filename_prefix"] = prefix
+
     # 4. 노드 139(SaveImageJpg) 수정 - input_image/ prefix 추가
     if "139" in modified_workflow:
-        modified_workflow["139"]["inputs"]["filename_prefix"] = f"input_image/{output_prefix}"
-    
+        prefix = os.path.join(output_dir, "input_image", output_prefix) if output_dir else os.path.join("input_image", output_prefix)
+        modified_workflow["139"]["inputs"]["filename_prefix"] = prefix
+
     # 5. 노드 140(SaveImageJpg) 수정 - reference_image/ prefix 추가
     if "140" in modified_workflow:
-        modified_workflow["140"]["inputs"]["filename_prefix"] = f"reference_image/{output_prefix}"
+        prefix = os.path.join(output_dir, "reference_image", output_prefix) if output_dir else os.path.join("reference_image", output_prefix)
+        modified_workflow["140"]["inputs"]["filename_prefix"] = prefix
 
     # 6. 노드 3(KSampler) 수정 - seed 랜덤 설정 + steps/cfg 오버라이드
     if "3" in modified_workflow:
@@ -608,6 +615,7 @@ def batch_request_qwen_hairstyle_edit(
             cfg=cfg,
             unet_name=unet_name,
             lora_name=lora_name,
+            output_dir=output_dir,
             prompt=prompt,
         )
         
@@ -698,7 +706,8 @@ def batch_request_to_comfyui(
             workflow=base_workflow,
             workflow_type=workflow_type,
             image_path=image_path,
-            gender=gender
+            gender=gender,
+            output_dir=output_dir,
         )
         
         if output_workflow_dir:
