@@ -125,6 +125,8 @@ Examples:
 """,
     )
 
+    parser.add_argument("--input-dir", type=str, default=None,
+                        help="Path to input images folder (optional, shown in HTML report)")
     parser.add_argument("--reference-dir", type=str, required=True,
                         help="Path to reference images folder")
     parser.add_argument("--output-dir", type=str, required=True,
@@ -515,7 +517,7 @@ def _evaluate_single_ollama_scoring(ollama_url, model_name, images, max_retries=
 
 def _make_result(entry, score, reason, error):
     """Build a result dict with file names."""
-    return {
+    result = {
         "filename": entry["stem"],
         "reference_file": Path(entry["reference"]).name,
         "output_file": Path(entry["output"]).name,
@@ -523,6 +525,9 @@ def _make_result(entry, score, reason, error):
         "reason": reason,
         "error": error,
     }
+    if "input" in entry:
+        result["input_file"] = Path(entry["input"]).name
+    return result
 
 
 def _ollama_worker(worker_id, ollama_url, model_name, entries_with_idx,
@@ -803,7 +808,9 @@ def _generate_scoring_html(results, metadata, image_dirs, output_path):
   .badge-fail {{ background: #f8d7da; color: #721c24; }}
   .badge-error {{ background: #fff3cd; color: #856404; }}
   .score-display {{ font-size: 28px; font-weight: 700; margin-right: 8px; }}
-  .image-row {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }}
+  .image-row {{ display: grid; gap: 12px; margin-bottom: 12px; }}
+  .image-row.cols-2 {{ grid-template-columns: repeat(2, 1fr); }}
+  .image-row.cols-3 {{ grid-template-columns: repeat(3, 1fr); }}
   .image-col {{ text-align: center; }}
   .image-col img {{ width: 100%; border-radius: 8px; border: 1px solid #eee; min-height: 150px; background: #f0f0f0; }}
   .image-col .label {{ font-size: 12px; color: #666; margin-top: 4px; font-weight: 600; }}
@@ -1004,7 +1011,14 @@ function renderCard(item) {{
 
   let imagesHtml = '';
   if (IMAGE_DIRS.reference && IMAGE_DIRS.output) {{
-    imagesHtml = `<div class="image-row">
+    const hasInput = IMAGE_DIRS.input && item.input_file;
+    const colsClass = hasInput ? 'cols-3' : 'cols-2';
+    let inputCol = '';
+    if (hasInput) {{
+      inputCol = `<div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.input, item.input_file)}}" alt="Input"><div class="label">INPUT</div></div>`;
+    }}
+    imagesHtml = `<div class="image-row ${{colsClass}}">
+      ${{inputCol}}
       <div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.reference, item.reference_file)}}" alt="Reference"><div class="label">REFERENCE</div></div>
       <div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.output, item.output_file)}}" alt="Output"><div class="label">OUTPUT</div></div>
     </div>`;
@@ -1096,10 +1110,14 @@ def main():
     if str(pkg_dir.parent) not in sys.path:
         sys.path.insert(0, str(pkg_dir.parent))
 
+    input_dir = Path(args.input_dir) if args.input_dir else None
     reference_dir = Path(args.reference_dir)
     output_dir = Path(args.output_dir)
 
-    for name, d in [("reference", reference_dir), ("output", output_dir)]:
+    dirs_to_check = [("reference", reference_dir), ("output", output_dir)]
+    if input_dir:
+        dirs_to_check.append(("input", input_dir))
+    for name, d in dirs_to_check:
         if not d.is_dir():
             logger.error(f"{name} directory not found: {d}")
             sys.exit(1)
@@ -1107,6 +1125,16 @@ def main():
     # Step 1: Scan dataset
     logger.info("Step 1: Scanning dataset...")
     matched, mismatched = scan_dataset_pair(reference_dir, output_dir)
+
+    # input_dir이 있으면 matched 엔트리에 input 이미지 경로 추가
+    if input_dir:
+        input_stems = {}
+        for p in input_dir.iterdir():
+            if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS:
+                input_stems[p.stem] = p
+        for entry in matched:
+            if entry["stem"] in input_stems:
+                entry["input"] = input_stems[entry["stem"]]
 
     if not matched:
         logger.error("No matched image pairs found.")
@@ -1165,16 +1193,23 @@ def main():
         "reference": str(reference_dir.resolve()),
         "output": str(output_dir.resolve()),
     }
+    if input_dir:
+        image_dirs["input"] = str(input_dir.resolve())
 
     if args.copy_images:
         logger.info("Copying images to report directory...")
         report_images_dir = Path(args.report_dir) / "images"
-        for role in ["reference", "output"]:
+        copy_roles = ["reference", "output"]
+        if input_dir:
+            copy_roles.insert(0, "input")
+        for role in copy_roles:
             dest_dir = report_images_dir / role
             dest_dir.mkdir(parents=True, exist_ok=True)
         copied = 0
         for entry in valid_entries:
-            for role in ["reference", "output"]:
+            for role in copy_roles:
+                if role not in entry:
+                    continue
                 src = Path(entry[role])
                 dest = report_images_dir / role / src.name
                 if not dest.exists():
@@ -1189,6 +1224,8 @@ def main():
             "output": "images/output",
             "_relative": True,
         }
+        if input_dir:
+            image_dirs["input"] = "images/input"
 
     report_paths = generate_scoring_reports(
         results, metadata, entries_map,
