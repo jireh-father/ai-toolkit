@@ -279,8 +279,7 @@ def main():
     args = parser.parse_args()
 
     if not os.path.isdir(args.path):
-        print(f"Error: 폴더를 찾을 수 없습니다: {args.path}")
-        sys.exit(1)
+        os.makedirs(args.path)
 
     # .env에서 설정 로드
     webhook_url = load_env_var("DISCORD_WEBHOOK_URL")
