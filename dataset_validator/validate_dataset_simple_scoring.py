@@ -160,6 +160,9 @@ Examples:
     parser.add_argument("--report-dir", type=str, default="./reports_simple_scoring")
     parser.add_argument("--copy-images", action="store_true",
                         help="Copy images to report-dir/images/")
+    parser.add_argument("--compress", action="store_true",
+                        help="Compress report-dir into a zip file next to it "
+                             "(e.g. /a/report -> /a/report.zip)")
 
     # Checkpoint settings
     parser.add_argument("--checkpoint-dir", type=str, default="./checkpoints_simple_scoring")
@@ -1255,6 +1258,21 @@ def main():
         logger.info(f"  Errors:     {meta['errors']}")
     logger.info(f"  Threshold:  {meta['threshold']}")
     logger.info(f"  Reports:    {Path(args.report_dir).resolve()}")
+
+    if args.compress:
+        report_dir_path = Path(args.report_dir).resolve()
+        parent_dir = report_dir_path.parent
+        base_name = report_dir_path.name
+        archive_base = parent_dir / base_name
+        logger.info(f"Compressing {report_dir_path} -> {archive_base}.zip")
+        shutil.make_archive(
+            base_name=str(archive_base),
+            format="zip",
+            root_dir=str(parent_dir),
+            base_dir=base_name,
+        )
+        logger.info(f"  Archive:    {archive_base}.zip")
+
     logger.info("=" * 60)
 
 

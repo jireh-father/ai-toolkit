@@ -288,6 +288,7 @@ def main():
     aws_secret_key = load_env_var("AWS_SECRET_ACCESS_KEY")
     aws_bucket = load_env_var("AWS_S3_BUCKET")
     aws_region = load_env_var("AWS_S3_REGION") or "ap-northeast-2"
+    
 
     # SimplePod/RunPod 감지
     simplepod_id = get_simplepod_instance_id()
