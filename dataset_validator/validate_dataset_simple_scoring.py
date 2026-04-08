@@ -61,15 +61,28 @@ TASK: Score the OUTPUT image on a 1-10 scale based on TWO criteria:
 - Does the hair-to-face boundary look seamless and natural?
 - Is the hair consistent in quality throughout? (no blurry patches mixed with sharp areas)
 
+=== CRITICAL HARD CAP RULE (MUST FOLLOW) ===
+If the OUTPUT hair shows ANY of the following unnatural appearances, the final score MUST be 6 or LOWER, regardless of how well the hairstyle shape matches the REFERENCE:
+- Overly glossy, shiny, or high-gloss finish (looks "wet" or over-polished)
+- Slightly, somewhat, or obviously artificial "plastic" appearance (like a doll, mannequin, or toy) — even a hint of artificial feel counts
+- Cartoonish, anime-like, illustrated, painted, or CGI-rendered look (not photographic)
+- Extremely saturated / overly vivid / "too punchy" color that doesn't match real photo tones
+- Rubbery, waxy, melted, or smeared texture without visible real strands
+- Airbrushed or over-smoothed hair that lacks natural strand detail
+- White noise, grainy noise, speckles, static-like dots, or any visible noise artifacts on the hair (noisy/dirty/grainy texture)
+- Hair that looks clearly AI-generated, stylized, or unreal compared to the rest of the photo
+
+Apply this cap STRICTLY. Even a near-perfect hairstyle shape match CANNOT score 7 or above if the hair looks plastic, glossy, cartoonish, or overly vivid. When in doubt about naturalness, prefer the lower score.
+
 IMPORTANT: Both criteria matter equally. A perfect hairstyle match with unnatural or artifact-ridden hair should score low. Natural-looking hair with a wrong hairstyle should also score low.
 
 SCORING GUIDE (be honest, not generous):
-- 1-2: Completely wrong hairstyle AND/OR extremely unnatural hair (obvious artifacts, plastic look)
-- 3-4: Major hairstyle differences OR significantly unnatural hair quality
-- 5: Partially similar hairstyle but with multiple obvious differences or noticeable quality issues
-- 6: Recognizably similar style but with notable flaws (color tone off, volume mismatch, or mild artifacts/unnatural appearance)
-- 7: Good hairstyle match with minor differences, hair looks mostly natural with only small quality issues
-- 8: Very good match, hair looks natural, only subtle differences or minor quality flaws on close inspection
+- 1-2: Completely wrong hairstyle AND/OR extremely unnatural hair (obvious artifacts, strong plastic/cartoon look)
+- 3-4: Major hairstyle differences OR significantly unnatural hair quality (clearly glossy/plastic/cartoonish)
+- 5: Partially similar hairstyle but with multiple obvious differences, OR noticeable unnatural gloss/plastic/cartoon quality
+- 6: Recognizably similar style but with notable flaws — INCLUDING any mild-but-visible plastic sheen, slight cartoonish feel, mild over-saturation, or artificial gloss. This is the HARD CEILING for any hair that does not look fully photorealistic.
+- 7: Good hairstyle match with minor differences, hair looks fully photorealistic and natural with only small quality issues (NO plastic/glossy/cartoon feel at all)
+- 8: Very good match, hair looks completely natural and photographic, only subtle differences or minor quality flaws on close inspection
 - 9: Near perfect hairstyle match, hair looks completely natural and blends perfectly with face/photo tone
 - 10: Perfect match in every aspect with flawless natural quality (extremely rare)
 
