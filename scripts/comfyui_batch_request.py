@@ -429,7 +429,7 @@ def modify_workflow_for_image(
 
 def modify_workflow_qwen_hairstyle_edit(
     workflow: dict, image_path1: str, image_path2: str, gen_index: int,
-    steps: int = None, cfg: float = None,
+    steps: int = None, cfg: float = None, scheduler: str = None,
     unet_name: str = None, lora_name: str = None,
     lightning_lora_name: str = None,
     prompt: str = None, output_dir: str = None,
@@ -495,13 +495,15 @@ def modify_workflow_qwen_hairstyle_edit(
         prefix = os.path.join(output_dir, "reference_image", output_prefix) if output_dir else os.path.join("reference_image", output_prefix)
         modified_workflow["140"]["inputs"]["filename_prefix"] = prefix
 
-    # 6. 노드 3(KSampler) 수정 - seed 랜덤 설정 + steps/cfg 오버라이드
+    # 6. 노드 3(KSampler) 수정 - seed 랜덤 설정 + steps/cfg/scheduler 오버라이드
     if "3" in modified_workflow:
         modified_workflow["3"]["inputs"]["seed"] = random.randint(0, 2**64 - 1)
         if steps is not None:
             modified_workflow["3"]["inputs"]["steps"] = steps
         if cfg is not None:
             modified_workflow["3"]["inputs"]["cfg"] = cfg
+        if scheduler is not None:
+            modified_workflow["3"]["inputs"]["scheduler"] = scheduler
 
     # 7. 노드 132(UNETLoader) 수정 - unet_name 오버라이드
     if unet_name is not None and "132" in modified_workflow:
@@ -524,7 +526,7 @@ def modify_workflow_qwen_hairstyle_edit(
 
 def modify_workflow_qwen_nunchaku_lora_hairstyle_edit(
     workflow: dict, image_path1: str, image_path2: str, gen_index: int,
-    steps: int = None, cfg: float = None,
+    steps: int = None, cfg: float = None, scheduler: str = None,
     unet_name: str = None, lora_name: str = None,
     lightning_lora_name: str = None,
     prompt: str = None, output_dir: str = None,
@@ -574,13 +576,15 @@ def modify_workflow_qwen_nunchaku_lora_hairstyle_edit(
         prefix = os.path.join(output_dir, "reference_image", output_prefix) if output_dir else os.path.join("reference_image", output_prefix)
         modified_workflow["136"]["inputs"]["filename_prefix"] = prefix
 
-    # 5. KSampler (노드 3) - seed 랜덤 + steps/cfg 오버라이드
+    # 5. KSampler (노드 3) - seed 랜덤 + steps/cfg/scheduler 오버라이드
     if "3" in modified_workflow:
         modified_workflow["3"]["inputs"]["seed"] = random.randint(0, 2**64 - 1)
         if steps is not None:
             modified_workflow["3"]["inputs"]["steps"] = steps
         if cfg is not None:
             modified_workflow["3"]["inputs"]["cfg"] = cfg
+        if scheduler is not None:
+            modified_workflow["3"]["inputs"]["scheduler"] = scheduler
 
     # 6. NunchakuQwenImageDiTLoader (노드 115) - model_name 오버라이드 (unet_name 인자 재사용)
     if unet_name is not None and "115" in modified_workflow:
@@ -614,6 +618,7 @@ def batch_request_qwen_hairstyle_edit(
     target_keywords: list[str] = None,
     steps: int = None,
     cfg: float = None,
+    scheduler: str = None,
     unet_name: str = None,
     lora_name: str = None,
     lightning_lora_name: str = None,
@@ -707,6 +712,7 @@ def batch_request_qwen_hairstyle_edit(
             gen_index=gen_idx,
             steps=steps,
             cfg=cfg,
+            scheduler=scheduler,
             unet_name=unet_name,
             lora_name=lora_name,
             lightning_lora_name=lightning_lora_name,
@@ -945,6 +951,12 @@ def main():
         help='KSampler cfg (qwen_hairstyle_edit 전용, 기본값: 워크플로우 원본값)'
     )
     parser.add_argument(
+        '--scheduler',
+        type=str,
+        default=None,
+        help='KSampler scheduler (qwen 전용, 기본값: None = 워크플로우 원본값)'
+    )
+    parser.add_argument(
         '--unet_name',
         type=str,
         default="qwen_image_edit_2511_fp8_e4m3fn_scaled_lightning_comfyui_4steps_v1.0.safetensors",
@@ -1007,6 +1019,8 @@ def main():
             print(f"KSampler steps: {args.steps}")
         if args.cfg is not None:
             print(f"KSampler cfg: {args.cfg}")
+        if args.scheduler is not None:
+            print(f"KSampler scheduler: {args.scheduler}")
         if args.unet_name is not None:
             print(f"UNETLoader unet_name: {args.unet_name}")
         if args.lora_name is not None:
@@ -1034,6 +1048,7 @@ def main():
             target_keywords=args.target_keywords,
             steps=args.steps,
             cfg=args.cfg,
+            scheduler=args.scheduler,
             unet_name=args.unet_name,
             lora_name=args.lora_name,
             lightning_lora_name=args.lightning_lora_name,
