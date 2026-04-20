@@ -431,10 +431,11 @@ def modify_workflow_qwen_hairstyle_edit(
     workflow: dict, image_path1: str, image_path2: str, gen_index: int,
     steps: int = None, cfg: float = None,
     unet_name: str = None, lora_name: str = None,
+    lightning_lora_name: str = None,
     prompt: str = None, output_dir: str = None,
 ) -> dict:
     """
-    qwen_hairstyle_edit 워크플로우를 수정합니다.
+    qwen_hairstyle_edit / qwen_lora_hairstyle_edit 워크플로우를 수정합니다.
 
     수정 사항:
     1. 노드 137(LoadImage): 이미지 1 파일 경로 설정
@@ -443,7 +444,8 @@ def modify_workflow_qwen_hairstyle_edit(
     4. 노드 3(KSampler): steps, cfg 설정 (옵션)
     5. 노드 132(UNETLoader): unet_name 설정 (옵션)
     6. 노드 134(LoraLoaderModelOnly): lora_name 설정 (옵션)
-    7. 노드 141(TextEncodeQwenImageEditPlus): prompt 설정 (옵션)
+    7. 노드 143(LoraLoaderModelOnly, Lightning LoRA): lightning_lora_name 설정 (옵션, 노드가 존재하는 워크플로우에만 적용)
+    8. 노드 141(TextEncodeQwenImageEditPlus): prompt 설정 (옵션)
 
     Args:
         workflow: 원본 워크플로우 딕셔너리
@@ -454,6 +456,7 @@ def modify_workflow_qwen_hairstyle_edit(
         cfg: KSampler cfg (None이면 워크플로우 원본값 사용)
         unet_name: UNETLoader unet_name (None이면 워크플로우 원본값 사용)
         lora_name: LoraLoaderModelOnly lora_name (None이면 워크플로우 원본값 사용)
+        lightning_lora_name: 노드 143 Lightning LoRA lora_name (None이면 워크플로우 원본값 사용)
         prompt: TextEncodeQwenImageEditPlus prompt (None이면 워크플로우 원본값 사용)
 
     Returns:
@@ -508,9 +511,92 @@ def modify_workflow_qwen_hairstyle_edit(
     if lora_name is not None and "134" in modified_workflow:
         modified_workflow["134"]["inputs"]["lora_name"] = lora_name
 
+    # 8-1. 노드 143(LoraLoaderModelOnly, Lightning LoRA) 수정 - lightning_lora_name 오버라이드
+    if lightning_lora_name is not None and "143" in modified_workflow:
+        modified_workflow["143"]["inputs"]["lora_name"] = lightning_lora_name
+
     # 9. 노드 141(TextEncodeQwenImageEditPlus) 수정 - prompt 오버라이드
     if prompt is not None and "141" in modified_workflow:
         modified_workflow["141"]["inputs"]["prompt"] = prompt
+
+    return modified_workflow
+
+
+def modify_workflow_qwen_nunchaku_lora_hairstyle_edit(
+    workflow: dict, image_path1: str, image_path2: str, gen_index: int,
+    steps: int = None, cfg: float = None,
+    unet_name: str = None, lora_name: str = None,
+    lightning_lora_name: str = None,
+    prompt: str = None, output_dir: str = None,
+) -> dict:
+    """
+    qwen_nunchaku_lora_hairstyle_edit 워크플로우를 수정합니다.
+
+    노드 매핑 (기존 qwen_hairstyle_edit 대비):
+    - LoadImage 1/2: 78 / 106 (동일)
+    - KSampler: 3 (동일)
+    - 모델 로더: 115 (NunchakuQwenImageDiTLoader, `model_name` 필드) — 기존 132 UNETLoader 대체
+    - 헤어 LoRA: 117 (NunchakuQwenImageLoraLoader) — 기존 134 대체
+    - Lightning LoRA: 132 (NunchakuQwenImageLoraLoader) — 기존 143 대체
+    - Prompt: 133 (TextEncodeQwenImageEditPlus) — 기존 141 대체
+    - SaveImageJpg 결과/입력/레퍼런스: 137 / 135 / 136 — 기존 138 / 139 / 140 대체
+
+    Returns:
+        수정된 워크플로우 딕셔너리
+    """
+    modified_workflow = json.loads(json.dumps(workflow))
+
+    image1_filename = os.path.basename(image_path1)
+    image1_name_without_ext = os.path.splitext(image1_filename)[0]
+    image2_filename = os.path.basename(image_path2)
+    image2_name_without_ext = os.path.splitext(image2_filename)[0]
+
+    # 1. LoadImage (이미지 1 / 이미지 2)
+    if "78" in modified_workflow:
+        modified_workflow["78"]["inputs"]["image"] = image_path1
+    if "106" in modified_workflow:
+        modified_workflow["106"]["inputs"]["image"] = image_path2
+
+    output_prefix = truncate_filename(f"{image1_name_without_ext}_{image2_name_without_ext}_{gen_index:04d}")
+
+    # 2. SaveImageJpg (최종 결과: 137)
+    if "137" in modified_workflow:
+        prefix = os.path.join(output_dir, output_prefix) if output_dir else output_prefix
+        modified_workflow["137"]["inputs"]["filename_prefix"] = prefix
+
+    # 3. SaveImageJpg (입력 이미지: 135)
+    if "135" in modified_workflow:
+        prefix = os.path.join(output_dir, "input_image", output_prefix) if output_dir else os.path.join("input_image", output_prefix)
+        modified_workflow["135"]["inputs"]["filename_prefix"] = prefix
+
+    # 4. SaveImageJpg (레퍼런스 이미지: 136)
+    if "136" in modified_workflow:
+        prefix = os.path.join(output_dir, "reference_image", output_prefix) if output_dir else os.path.join("reference_image", output_prefix)
+        modified_workflow["136"]["inputs"]["filename_prefix"] = prefix
+
+    # 5. KSampler (노드 3) - seed 랜덤 + steps/cfg 오버라이드
+    if "3" in modified_workflow:
+        modified_workflow["3"]["inputs"]["seed"] = random.randint(0, 2**64 - 1)
+        if steps is not None:
+            modified_workflow["3"]["inputs"]["steps"] = steps
+        if cfg is not None:
+            modified_workflow["3"]["inputs"]["cfg"] = cfg
+
+    # 6. NunchakuQwenImageDiTLoader (노드 115) - model_name 오버라이드 (unet_name 인자 재사용)
+    if unet_name is not None and "115" in modified_workflow:
+        modified_workflow["115"]["inputs"]["model_name"] = unet_name
+
+    # 7. NunchakuQwenImageLoraLoader (노드 117, 헤어스타일 LoRA) - lora_name 오버라이드
+    if lora_name is not None and "117" in modified_workflow:
+        modified_workflow["117"]["inputs"]["lora_name"] = lora_name
+
+    # 8. NunchakuQwenImageLoraLoader (노드 132, Lightning LoRA) - lightning_lora_name 오버라이드
+    if lightning_lora_name is not None and "132" in modified_workflow:
+        modified_workflow["132"]["inputs"]["lora_name"] = lightning_lora_name
+
+    # 9. TextEncodeQwenImageEditPlus (노드 133) - prompt 오버라이드
+    if prompt is not None and "133" in modified_workflow:
+        modified_workflow["133"]["inputs"]["prompt"] = prompt
 
     return modified_workflow
 
@@ -522,6 +608,7 @@ def batch_request_qwen_hairstyle_edit(
     output_workflow_dir: str,
     output_dir: str,
     num_gens: int,
+    workflow_type: str = "qwen_hairstyle_edit",
     force_request: bool = False,
     cookie: str = None,
     target_keywords: list[str] = None,
@@ -529,10 +616,11 @@ def batch_request_qwen_hairstyle_edit(
     cfg: float = None,
     unet_name: str = None,
     lora_name: str = None,
+    lightning_lora_name: str = None,
     prompt: str = None,
 ) -> dict[str, str]:
     """
-    qwen_hairstyle_edit 워크플로우를 위한 배치 요청 함수입니다.
+    qwen_hairstyle_edit / qwen_lora_hairstyle_edit 워크플로우를 위한 배치 요청 함수입니다.
     num_gens만큼 랜덤으로 2개의 이미지를 선택하여 워크플로우를 생성합니다.
 
     Args:
@@ -547,6 +635,7 @@ def batch_request_qwen_hairstyle_edit(
         cfg: KSampler cfg (None이면 워크플로우 원본값)
         unet_name: UNETLoader unet_name (None이면 워크플로우 원본값)
         lora_name: LoraLoaderModelOnly lora_name (None이면 워크플로우 원본값)
+        lightning_lora_name: 노드 143 Lightning LoRA lora_name (None이면 워크플로우 원본값)
         prompt: TextEncodeQwenImageEditPlus prompt (None이면 워크플로우 원본값)
 
     Returns:
@@ -605,8 +694,13 @@ def batch_request_qwen_hairstyle_edit(
         # 현재 호스트 선택 (라운드로빈)
         current_host = next(host_cycle)
         
-        # 워크플로우 수정
-        modified_workflow = modify_workflow_qwen_hairstyle_edit(
+        # 워크플로우 수정 (nunchaku 워크플로우는 노드 ID가 다르므로 별도 함수 사용)
+        modify_fn = (
+            modify_workflow_qwen_nunchaku_lora_hairstyle_edit
+            if workflow_type == "qwen_nunchaku_lora_hairstyle_edit"
+            else modify_workflow_qwen_hairstyle_edit
+        )
+        modified_workflow = modify_fn(
             workflow=base_workflow,
             image_path1=image_path1,
             image_path2=image_path2,
@@ -615,6 +709,7 @@ def batch_request_qwen_hairstyle_edit(
             cfg=cfg,
             unet_name=unet_name,
             lora_name=lora_name,
+            lightning_lora_name=lightning_lora_name,
             output_dir=output_dir,
             prompt=prompt,
         )
@@ -758,7 +853,7 @@ def main():
         '--workflow_type',
         type=str,
         default='random_face_change',
-        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change', 'qwen_hairstyle_edit', 'qwen_lightning_hairstyle_edit'],
+        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change', 'qwen_hairstyle_edit', 'qwen_lightning_hairstyle_edit', 'qwen_lora_hairstyle_edit', 'qwen_nunchaku_lora_hairstyle_edit'],
         help='워크플로우 타입 (기본값: random_face_change)'
     )
     
@@ -862,6 +957,12 @@ def main():
         help='LoraLoaderModelOnly lora_name (qwen_hairstyle_edit 전용, 기본값: 워크플로우 원본값)'
     )
     parser.add_argument(
+        '--lightning_lora_name',
+        type=str,
+        default=None,
+        help='노드 143 Lightning LoRA lora_name (qwen_lora_hairstyle_edit 전용, 기본값: 워크플로우 원본값)'
+    )
+    parser.add_argument(
         '--prompt',
         type=str,
         default="change only the hairstyle of the person in Image 1 to match the hairstyle of the person in Image 2.",
@@ -901,7 +1002,7 @@ def main():
     print(f"출력 디렉토리: {args.output_dir}")
     print(f"강제 요청: {args.force_request}")
     print(f"ComfyUI 호스트: {', '.join(args.comfyui_hosts)}")
-    if args.workflow_type in ["qwen_hairstyle_edit", "qwen_lightning_hairstyle_edit"]:
+    if args.workflow_type in ["qwen_hairstyle_edit", "qwen_lightning_hairstyle_edit", "qwen_lora_hairstyle_edit", "qwen_nunchaku_lora_hairstyle_edit"]:
         if args.steps is not None:
             print(f"KSampler steps: {args.steps}")
         if args.cfg is not None:
@@ -910,6 +1011,8 @@ def main():
             print(f"UNETLoader unet_name: {args.unet_name}")
         if args.lora_name is not None:
             print(f"LoraLoader lora_name: {args.lora_name}")
+        if args.lightning_lora_name is not None:
+            print(f"Lightning LoraLoader lora_name: {args.lightning_lora_name}")
         if args.prompt is not None:
             print(f"Prompt: {args.prompt}")
     print("=" * 60)
@@ -917,7 +1020,7 @@ def main():
     random.seed(args.seed)
     
     # 배치 요청 실행
-    if args.workflow_type in ["qwen_hairstyle_edit", "qwen_lightning_hairstyle_edit"]:
+    if args.workflow_type in ["qwen_hairstyle_edit", "qwen_lightning_hairstyle_edit", "qwen_lora_hairstyle_edit", "qwen_nunchaku_lora_hairstyle_edit"]:
         results = batch_request_qwen_hairstyle_edit(
             image_dir=args.image_dir,
             workflow_path=workflow_path,
@@ -925,6 +1028,7 @@ def main():
             output_workflow_dir=args.output_workflow_dir,
             output_dir=args.output_dir,
             num_gens=args.num_gens,
+            workflow_type=args.workflow_type,
             force_request=args.force_request,
             cookie=args.cookie,
             target_keywords=args.target_keywords,
@@ -932,6 +1036,7 @@ def main():
             cfg=args.cfg,
             unet_name=args.unet_name,
             lora_name=args.lora_name,
+            lightning_lora_name=args.lightning_lora_name,
             prompt=args.prompt,
         )
     else:
