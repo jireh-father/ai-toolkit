@@ -859,7 +859,7 @@ def main():
         '--workflow_type',
         type=str,
         default='random_face_change',
-        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change', 'qwen_hairstyle_edit', 'qwen_lightning_hairstyle_edit', 'qwen_lora_hairstyle_edit', 'qwen_nunchaku_lora_hairstyle_edit'],
+        choices=['random_face_change', 'random_background_change', 'random_camera_angle_move', 'random_cloth_change', 'qwen_hairstyle_edit', 'qwen_lightning_hairstyle_edit', 'qwen_lora_hairstyle_edit', 'qwen_nunchaku_lora_hairstyle_edit', 'qwen_nunchaku_lora_hairstyle_edit_cache'],
         help='워크플로우 타입 (기본값: random_face_change)'
     )
     
@@ -996,6 +996,9 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(os.path.join(args.output_dir, "reference_image"), exist_ok=True)
     os.makedirs(os.path.join(args.output_dir, "input_image"), exist_ok=True)
+
+    if args.workflow_type == "qwen_nunchaku_lora_hairstyle_edit_cache":
+        args.workflow_type = "qwen_nunchaku_lora_hairstyle_edit"
     
     # 워크플로우 경로 조합
     workflow_path = f"{args.workflow_dir}/{args.workflow_type}.json"
