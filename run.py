@@ -1,8 +1,10 @@
 import os
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
+import json
 import sys
 from typing import Union, OrderedDict
+from urllib import request, error
 from dotenv import load_dotenv
 # Load the .env file if it exists
 load_dotenv()
@@ -25,6 +27,76 @@ from toolkit.accelerator import get_accelerator
 from toolkit.print import print_acc, setup_log_to_file
 
 accelerator = get_accelerator()
+
+
+SIMPLEPOD_INSTANCE_JSON = "/etc/simplepod/instance.json"
+
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
+def get_simplepod_instance_id():
+    """SimplePod 인스턴스 hashId를 읽습니다."""
+    if not os.path.isfile(SIMPLEPOD_INSTANCE_JSON):
+        return None
+    try:
+        with open(SIMPLEPOD_INSTANCE_JSON, "r") as f:
+            data = json.load(f)
+        return data.get("hashId")
+    except Exception:
+        return None
+
+
+def terminate_simplepod(instance_id, api_key):
+    """SimplePod REST API로 인스턴스를 삭제합니다."""
+    url = f"https://api.simplemining.net/instances/{instance_id}"
+    req = request.Request(url, method="DELETE", headers={
+        "X-AUTH-TOKEN": api_key,
+        "User-Agent": "AiToolkit/1.0",
+    })
+    try:
+        resp = request.urlopen(req, timeout=15)
+        print_acc(f"SimplePod 인스턴스 삭제 성공 (status: {resp.code})")
+        return True
+    except error.HTTPError as e:
+        print_acc(f"SimplePod API 오류: {e.code} {e.reason}")
+        return False
+    except Exception as e:
+        print_acc(f"SimplePod API 요청 실패: {e}")
+        return False
+
+
+def delete_cloud_pod():
+    """학습 완료 후 클라우드 팟(SimplePod / RunPod)을 삭제합니다."""
+    simplepod_id = get_simplepod_instance_id()
+    simplepod_api_key = os.environ.get("SIMPLEPOD_API_KEY")
+    runpod_pod_id = os.environ.get("RUNPOD_POD_ID", "")
+
+    if simplepod_id:
+        if simplepod_api_key:
+            print_acc(f"SimplePod 인스턴스 삭제: {simplepod_id}")
+            if not terminate_simplepod(simplepod_id, simplepod_api_key):
+                print_acc("API 실패, kill 1 시도...")
+                os.system("kill 1")
+        else:
+            print_acc("SimplePod 인스턴스 ID는 있으나 API 키 없음, kill 1 시도...")
+            os.system("kill 1")
+    elif runpod_pod_id:
+        print_acc(f"RunPod Pod 삭제: {runpod_pod_id}")
+        ret = os.system(f"runpodctl remove pod {runpod_pod_id}")
+        if ret != 0:
+            print_acc("runpodctl 실패, kill 1 시도...")
+            os.system("kill 1")
+    else:
+        print_acc("클라우드 팟을 감지할 수 없습니다 (SimplePod instance.json 없음, RUNPOD_POD_ID 없음). 팟 삭제를 건너뜁니다.")
 
 
 def print_end_message(jobs_completed, jobs_failed):
@@ -75,6 +147,13 @@ def main():
         default=None,
         help='Log file to write output to'
     )
+
+    parser.add_argument(
+        '--delete_pod_after_training',
+        type=str2bool,
+        default=False,
+        help='If True, delete the cloud pod (SimplePod or RunPod) after training completes'
+    )
     args = parser.parse_args()
     
     if args.log is not None:
@@ -114,6 +193,13 @@ def main():
             if not args.recover:
                 print_end_message(jobs_completed, jobs_failed)
                 raise e
+
+    print_end_message(jobs_completed, jobs_failed)
+
+    if args.delete_pod_after_training and accelerator.is_main_process:
+        print_acc("")
+        print_acc("학습 완료 → 클라우드 팟 삭제를 시작합니다.")
+        delete_cloud_pod()
 
 
 if __name__ == '__main__':
