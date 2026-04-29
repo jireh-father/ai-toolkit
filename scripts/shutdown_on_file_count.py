@@ -276,6 +276,11 @@ def main():
         choices=["simplepod", "runpod"],
         help="클라우드 환경 (simplepod 또는 runpod, 미지정시 자동 감지)"
     )
+    # --do-not-postprocess
+    parser.add_argument(
+        "--do-not-postprocess", action="store_true", default=False,
+        help="압축 완료 후 폴더 내용물을 삭제하지 않음"
+    )
     args = parser.parse_args()
 
     if not os.path.isdir(args.path):
@@ -288,6 +293,7 @@ def main():
     aws_secret_key = load_env_var("AWS_SECRET_ACCESS_KEY")
     aws_bucket = load_env_var("AWS_S3_BUCKET")
     aws_region = load_env_var("AWS_S3_REGION") or "ap-northeast-2"
+    do_not_postprocess = args.do_not_postprocess
     
 
     # SimplePod/RunPod 감지
@@ -325,47 +331,48 @@ def main():
                 hostname = socket.gethostname()
                 print(f"\n*** 파일 수 {file_count}개 >= {args.max_files}개 — 압축 및 업로드 시작 ***")
 
-                # 1. 압축
-                archive_name = f"{args.work_name}.tar.gz"
-                archive_path = os.path.join(os.path.dirname(args.path.rstrip("/")), archive_name)
+                if not do_not_postprocess:
+                    # 1. 압축
+                    archive_name = f"{args.work_name}.tar.gz"
+                    archive_path = os.path.join(os.path.dirname(args.path.rstrip("/")), archive_name)
 
-                if not compress_folder(args.path, archive_path):
-                    print("압축 실패, 종료합니다.")
-                    if webhook_url:
-                        send_discord_message(webhook_url,
-                            f"🔴 **압축 실패** ({hostname})\n"
-                            f"폴더 `{args.path}` 압축 중 오류 발생. 서버를 종료합니다.")
-                    do_shutdown(cloud, simplepod_id, simplepod_api_key)
-                    sys.exit(1)
+                    if not compress_folder(args.path, archive_path):
+                        print("압축 실패, 종료합니다.")
+                        if webhook_url:
+                            send_discord_message(webhook_url,
+                                f"🔴 **압축 실패** ({hostname})\n"
+                                f"폴더 `{args.path}` 압축 중 오류 발생. 서버를 종료합니다.")
+                        do_shutdown(cloud, simplepod_id, simplepod_api_key)
+                        sys.exit(1)
 
-                # 2. 압축 완료 후 폴더 내용물 삭제 (--remove 옵션)
-                if args.remove:
-                    print(f"폴더 내용물 삭제 시작: {args.path}")
-                    for entry in os.scandir(args.path):
-                        try:
-                            if entry.is_dir(follow_symlinks=False):
-                                shutil.rmtree(entry.path)
-                            else:
-                                os.remove(entry.path)
-                        except Exception as e:
-                            print(f"  삭제 실패: {entry.path} — {e}")
-                    print("폴더 내용물 삭제 완료")
+                    # 2. 압축 완료 후 폴더 내용물 삭제 (--remove 옵션)
+                    if args.remove:
+                        print(f"폴더 내용물 삭제 시작: {args.path}")
+                        for entry in os.scandir(args.path):
+                            try:
+                                if entry.is_dir(follow_symlinks=False):
+                                    shutil.rmtree(entry.path)
+                                else:
+                                    os.remove(entry.path)
+                            except Exception as e:
+                                print(f"  삭제 실패: {entry.path} — {e}")
+                        print("폴더 내용물 삭제 완료")
 
-                # 3. S3 업로드
-                download_url = None
-                if aws_access_key and aws_secret_key and aws_bucket:
-                    s3_key = f"{args.s3_prefix}/{archive_name}"
-                    download_url = upload_to_s3(
-                        archive_path, aws_bucket, s3_key,
-                        aws_region, aws_access_key, aws_secret_key,
-                    )
+                    # 3. S3 업로드
+                    download_url = None
+                    if aws_access_key and aws_secret_key and aws_bucket:
+                        s3_key = f"{args.s3_prefix}/{archive_name}"
+                        download_url = upload_to_s3(
+                            archive_path, aws_bucket, s3_key,
+                            aws_region, aws_access_key, aws_secret_key,
+                        )
 
-                    # 업로드 성공하면 압축 파일 삭제
-                    if download_url:
-                        os.remove(archive_path)
-                        print(f"압축 파일 삭제 완료: {archive_path}")
-                    else:
-                        print("S3 업로드 실패, 압축 파일을 유지합니다.")
+                        # 업로드 성공하면 압축 파일 삭제
+                        if download_url:
+                            os.remove(archive_path)
+                            print(f"압축 파일 삭제 완료: {archive_path}")
+                        else:
+                            print("S3 업로드 실패, 압축 파일을 유지합니다.")
 
                 # 3. 디스코드 알림
                 if webhook_url:
