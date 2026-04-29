@@ -1,20 +1,2 @@
-export PATH=$PATH:/app/miniconda3/bin
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-source activate aitoolkit312
-nohup python -u scripts/comfyui_batch_request.py --seed 2 --scheduler kl_optimal --unet_name qwen_image_edit_2511_nvfp4.safetensors --lora_name "hair_v3_dim16_000011000.safetensors" --image_dir "/app/data/naver_hair_images" --workflow_type qwen_lora_hairstyle_edit --hosts 127.0.0.1:8188 --output_dir /app/ComfyUI/tr_v3_dim16_11000_nvfp4_lightning --num_gens 5000 --target_keywords 단발 BOB 숏 SHORT 태슬 MEDIUM 미디움 미디엄 > log_tr_v3_dim16_fp8_11000_nvfp4_lightning_01 &
-nohup python -u scripts/shutdown_on_file_count.py --remove --path /app/ComfyUI/tr_v3_dim16_11000_nvfp4_lightning --max-files 10000 --cloud simplepod --work-name tr_v3_dim16_11000_nvfp4_lightning > log_tr_v3_dim16_11000_nvfp4_lightning_monitor &
-
-
-export PATH=$PATH:/app/miniconda3/bin
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-source activate aitoolkit312
-nohup python -u scripts/comfyui_batch_request.py --seed 1 --scheduler kl_optimal --unet_name qwen_image_edit_2511_nvfp4.safetensors --lora_name "hair_v3_dim16_000011000.safetensors" --image_dir "/app/data/naver_hair_images" --workflow_type qwen_lora_hairstyle_edit --hosts 127.0.0.1:8188 --output_dir /app/ComfyUI/tr_v3_dim16_11000_nvfp4_lightning --num_gens 5000 > log_tr_v3_dim16_fp8_11000_nvfp4_lightning_02 &
-
-cd dataset
-wget https://hairmake.s3.ap-northeast-2.amazonaws.com/dataset/tr_v3_dim16_11000_nvfp4_lightning.tar.gz
-mkdir ./tr_v3_dim16_11000_nvfp4_lightning && tar -xzf tr_v3_dim16_11000_nvfp4_lightning.tar.gz -C ./tr_v3_dim16_11000_nvfp4_lightning
-cd ..
-no_proxy="localhost, 127.0.0.1, ::1" nohup python -u dataset_validator/validate_dataset_simple_scoring.py --compress --input-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning/input_image --output-dir  ./dataset/tr_v3_dim16_11000_nvfp4_lightning --reference-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning/reference_image --report-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning_report --checkpoint-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning_checkpoint --model gemma4:31b --backend ollama --ollama-urls "http://localhost:11434,http://localhost:11435,http://localhost:11436,http://localhost:11437" --copy-images > log_tr_v3_dim16_11000_nvfp4_lightning_gemma31b &
-scp ilseo@ebaykorea@172.30.248.129:~/source/ai-toolkit/dataset/tr_v3_dim16_11000_nvfp4_lightning_report.zip ./
+nohup python -u dataset_validator/compare_faces.py --input-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning/input_image --output-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning --reference-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning/reference_image --report-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning_report --num-workers 8 > log_tr_v3_dim16_11000_nvfp4_lightning_check_face &
+python dataset_validator/separate_face_failed.py --input-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning/input_image --output-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning --reference-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning/reference_image --report ./dataset/tr_v3_dim16_11000_nvfp4_lightning_report/face_results.json --failed-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning_face_failed --passed-dir ./dataset/tr_v3_dim16_11000_nvfp4_lightning_face_passed --mode copy
