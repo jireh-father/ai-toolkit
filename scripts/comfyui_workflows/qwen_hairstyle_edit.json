@@ -2,7 +2,7 @@
   "3": {
     "inputs": {
       "seed": 183311042503565,
-      "steps": 30,
+      "steps": 20,
       "cfg": 1,
       "sampler_name": "euler",
       "scheduler": "simple",
@@ -162,7 +162,7 @@
   },
   "134": {
     "inputs": {
-      "lora_name": "qwen_v1_dim16_short_prompt_512k_steps_000009000.safetensors",
+      "lora_name": "hair_v3_dim16_000007500.safetensors",
       "strength_model": 1,
       "model": [
         "132",
