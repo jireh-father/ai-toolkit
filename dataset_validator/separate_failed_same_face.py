@@ -1,14 +1,15 @@
 """Separate passed and failed samples based on same-face hairstyle check results.
 
 Works with results.json produced by validate_dataset_simple_check_same_face.py,
-which uses a true/false match per sample (no reference directory).
+which uses a true/false match per sample.
 
 Usage:
-    python dataset_validator/separate_failed_same_face.py \
-        --report ./reports_same_face/results.json \
-        --input-dir ./data/input \
-        --output-dir ./data/output \
-        --failed-dir ./data/failed \
+    python dataset_validator/separate_failed_same_face.py \\
+        --report ./reports_same_face/results.json \\
+        --input-dir ./data/input \\
+        --reference-dir ./data/reference \\
+        --output-dir ./data/output \\
+        --failed-dir ./data/failed \\
         --passed-dir ./data/passed
 """
 
@@ -42,6 +43,10 @@ def parse_args():
         help="Path to input (original) images folder",
     )
     parser.add_argument(
+        "--reference-dir", type=str, default=None,
+        help="Path to reference images folder (optional)",
+    )
+    parser.add_argument(
         "--output-dir", type=str, required=True,
         help="Path to output (edited) images folder",
     )
@@ -61,16 +66,20 @@ def parse_args():
     return parser.parse_args()
 
 
-def _copy_files(filenames, input_dir, output_dir, dest_dir, op_func, op_name):
+def _copy_files(filenames, src_dirs, dest_dir, op_func, op_name):
     """Copy or move files to destination directory.
+
+    Args:
+        filenames: list of filename stems.
+        src_dirs: list of (label, src_dir_path) tuples.
+        dest_dir: destination base directory.
+        op_func: shutil.copy2 or shutil.move.
+        op_name: "Copying" or "Moving".
 
     Returns (success_count, skip_count).
     """
-    dest_input = dest_dir / "input"
-    dest_output = dest_dir / "output"
-
-    for d in [dest_input, dest_output]:
-        d.mkdir(parents=True, exist_ok=True)
+    for label, _ in src_dirs:
+        (dest_dir / label).mkdir(parents=True, exist_ok=True)
 
     success_count = 0
     skip_count = 0
@@ -79,10 +88,8 @@ def _copy_files(filenames, input_dir, output_dir, dest_dir, op_func, op_name):
         stem = Path(filename).stem
 
         moved_any = False
-        for src_dir, dst_dir, label in [
-            (input_dir, dest_input, "input"),
-            (output_dir, dest_output, "output"),
-        ]:
+        for label, src_dir in src_dirs:
+            dst_dir = dest_dir / label
             src_file = src_dir / filename
             if not src_file.is_file():
                 candidates = [
@@ -146,12 +153,21 @@ def main():
 
     # Validate source directories
     input_dir = Path(args.input_dir)
+    reference_dir = Path(args.reference_dir) if args.reference_dir else None
     output_dir = Path(args.output_dir)
 
-    for name, d in [("input", input_dir), ("output", output_dir)]:
+    dirs_to_check = [("input", input_dir), ("output", output_dir)]
+    if reference_dir:
+        dirs_to_check.append(("reference", reference_dir))
+    for name, d in dirs_to_check:
         if not d.is_dir():
             logger.error(f"{name} directory not found: {d}")
             sys.exit(1)
+
+    # Build source dirs list
+    src_dirs = [("input", input_dir), ("output", output_dir)]
+    if reference_dir:
+        src_dirs.insert(1, ("reference", reference_dir))
 
     op_func = shutil.copy2 if args.mode == "copy" else shutil.move
     op_name = "Copying" if args.mode == "copy" else "Moving"
@@ -161,7 +177,7 @@ def main():
         failed_dir = Path(args.failed_dir)
         logger.info(f"{op_name} {len(failed_files)} failed samples to {failed_dir}...")
         success, skip = _copy_files(
-            failed_files, input_dir, output_dir, failed_dir, op_func, op_name,
+            failed_files, src_dirs, failed_dir, op_func, op_name,
         )
         logger.info(f"  Failed -- processed: {success}, skipped: {skip}")
 
@@ -170,7 +186,7 @@ def main():
         passed_dir = Path(args.passed_dir)
         logger.info(f"{op_name} {len(passed_files)} passed samples to {passed_dir}...")
         success, skip = _copy_files(
-            passed_files, input_dir, output_dir, passed_dir, op_func, op_name,
+            passed_files, src_dirs, passed_dir, op_func, op_name,
         )
         logger.info(f"  Passed -- processed: {success}, skipped: {skip}")
 
@@ -185,3 +201,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

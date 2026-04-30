@@ -8,6 +8,7 @@ Usage:
     python dataset_validator/validate_dataset_simple_check_same_face.py \
         --input-dir ./data/input \
         --output-dir ./data/output \
+        --reference-dir ./data/reference \
         --model qwen3-vl-8b \
         --report-dir ./reports_same_face
 """
@@ -16,6 +17,7 @@ import argparse
 import csv
 import json
 import logging
+import multiprocessing as mp
 import random
 import re
 import shutil
@@ -89,6 +91,10 @@ Examples:
   python dataset_validator/validate_dataset_simple_check_same_face.py \\
       --input-dir ./input --output-dir ./output
 
+  # With reference directory
+  python dataset_validator/validate_dataset_simple_check_same_face.py \\
+      --input-dir ./input --output-dir ./output --reference-dir ./reference
+
   # Ollama backend
   python dataset_validator/validate_dataset_simple_check_same_face.py \\
       --input-dir ./input --output-dir ./output \\
@@ -103,6 +109,8 @@ Examples:
 
     parser.add_argument("--input-dir", type=str, required=True,
                         help="Path to input (original) images folder")
+    parser.add_argument("--reference-dir", type=str, default=None,
+                        help="Path to reference images folder (optional, shown in HTML report)")
     parser.add_argument("--output-dir", type=str, required=True,
                         help="Path to output (edited) images folder")
 
@@ -119,6 +127,10 @@ Examples:
                         choices=["local", "vllm", "ollama"])
     parser.add_argument("--vllm-url", type=str, default="http://localhost:8000")
     parser.add_argument("--ollama-url", type=str, default="http://localhost:11434")
+    parser.add_argument("--ollama-urls", type=str, default=None,
+                        help="Comma-separated Ollama server URLs for parallel processing. "
+                             "Each URL runs in a separate process. "
+                             "e.g. http://localhost:11434,http://localhost:11435")
     parser.add_argument("--ollama-port", type=int, default=None,
                         help="Ollama server port (overrides port in --ollama-url, default: 11434)")
 
@@ -126,6 +138,9 @@ Examples:
     parser.add_argument("--report-dir", type=str, default="./reports_same_face")
     parser.add_argument("--copy-images", action="store_true",
                         help="Copy images to report-dir/images/")
+    parser.add_argument("--compress", action="store_true",
+                        help="Compress report-dir into a zip file next to it "
+                             "(e.g. /a/report -> /a/report.zip)")
 
     # Checkpoint settings
     parser.add_argument("--checkpoint-dir", type=str, default="./checkpoints_same_face")
@@ -481,6 +496,42 @@ def _evaluate_single_ollama_simple(ollama_url, model_name, images, max_retries=3
 # Evaluation runner
 # ---------------------------------------------------------------------------
 
+def _make_result(entry, match, reason, error):
+    """Build a result dict with file names."""
+    result = {
+        "filename": entry["stem"],
+        "input_file": Path(entry["input"]).name,
+        "output_file": Path(entry["output"]).name,
+        "match": match,
+        "reason": reason,
+        "error": error,
+    }
+    if "reference" in entry:
+        result["reference_file"] = Path(entry["reference"]).name
+    return result
+
+
+def _ollama_worker(worker_id, ollama_url, model_name, entries_with_idx,
+                   short_side, result_queue):
+    """Worker process for parallel Ollama evaluation."""
+    wlogger = logging.getLogger(f"ollama-worker-{worker_id}")
+    wlogger.info(f"Starting on {ollama_url}, {len(entries_with_idx)} samples")
+
+    for idx, entry in entries_with_idx:
+        pair = load_image_pair(entry, short_side=short_side)
+        if pair is None:
+            result = _make_result(entry, None, "Failed to load images", True)
+        else:
+            resp = _evaluate_single_ollama_simple(ollama_url, model_name, pair)
+            if resp is None:
+                result = _make_result(entry, None, "Ollama evaluation failed", True)
+            else:
+                result = _make_result(entry, resp["match"], resp["reason"], False)
+        result_queue.put((idx, result))
+
+    wlogger.info("Done")
+
+
 def run_evaluation(entries, args):
     """Run evaluation on all entries."""
     from tqdm import tqdm
@@ -499,32 +550,13 @@ def run_evaluation(entries, args):
         for entry in pbar:
             pair = load_image_pair(entry, short_side=args.resize_short_side)
             if pair is None:
-                results.append({
-                    "filename": entry["stem"],
-                    "input_file": Path(entry["reference"]).name,
-                    "output_file": Path(entry["output"]).name,
-                    "match": None,
-                    "reason": "Failed to load images", "error": True,
-                })
+                results.append(_make_result(entry, None, "Failed to load images", True))
             else:
                 resp = evaluate_single_simple(vlm, pair, max_retries=3)
                 if resp is None:
-                    results.append({
-                        "filename": entry["stem"],
-                        "input_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": None,
-                        "reason": "VLM evaluation failed", "error": True,
-                    })
+                    results.append(_make_result(entry, None, "VLM evaluation failed", True))
                 else:
-                    results.append({
-                        "filename": entry["stem"],
-                        "input_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": resp["match"],
-                        "reason": resp["reason"],
-                        "error": False,
-                    })
+                    results.append(_make_result(entry, resp["match"], resp["reason"], False))
             pbar.set_postfix(
                 done=len(results),
                 matched=sum(1 for r in results if r.get("match") is True),
@@ -543,32 +575,13 @@ def run_evaluation(entries, args):
         for entry in pbar:
             pair = load_image_pair(entry, short_side=args.resize_short_side)
             if pair is None:
-                results.append({
-                    "filename": entry["stem"],
-                    "input_file": Path(entry["reference"]).name,
-                    "output_file": Path(entry["output"]).name,
-                    "match": None,
-                    "reason": "Failed to load images", "error": True,
-                })
+                results.append(_make_result(entry, None, "Failed to load images", True))
             else:
                 resp = _evaluate_single_vllm_simple(args.vllm_url, hf_id, pair)
                 if resp is None:
-                    results.append({
-                        "filename": entry["stem"],
-                        "input_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": None,
-                        "reason": "vLLM evaluation failed", "error": True,
-                    })
+                    results.append(_make_result(entry, None, "vLLM evaluation failed", True))
                 else:
-                    results.append({
-                        "filename": entry["stem"],
-                        "input_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": resp["match"],
-                        "reason": resp["reason"],
-                        "error": False,
-                    })
+                    results.append(_make_result(entry, resp["match"], resp["reason"], False))
             pbar.set_postfix(
                 done=len(results),
                 matched=sum(1 for r in results if r.get("match") is True),
@@ -576,46 +589,79 @@ def run_evaluation(entries, args):
 
     elif args.backend == "ollama":
         from dataset_validator.core.ollama_client import check_server_health
-        if not check_server_health(args.ollama_url):
-            raise ConnectionError(f"Ollama server not reachable at {args.ollama_url}")
-        logger.info(f"Connected to Ollama server at {args.ollama_url}")
 
-        pbar = tqdm(entries, desc="Evaluating (Ollama)", unit="sample")
-        for entry in pbar:
-            pair = load_image_pair(entry, short_side=args.resize_short_side)
-            if pair is None:
-                results.append({
-                    "filename": entry["stem"],
-                    "input_file": Path(entry["reference"]).name,
-                    "output_file": Path(entry["output"]).name,
-                    "match": None,
-                    "reason": "Failed to load images", "error": True,
-                })
-            else:
-                resp = _evaluate_single_ollama_simple(
-                    args.ollama_url, args.model, pair,
-                )
-                if resp is None:
-                    results.append({
-                        "filename": entry["stem"],
-                        "input_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": None,
-                        "reason": "Ollama evaluation failed", "error": True,
-                    })
+        # Determine Ollama URLs
+        ollama_urls = [args.ollama_url]
+        if args.ollama_urls:
+            ollama_urls = [u.strip() for u in args.ollama_urls.split(",") if u.strip()]
+
+        # Health check all servers
+        for url in ollama_urls:
+            if not check_server_health(url):
+                raise ConnectionError(f"Ollama server not reachable at {url}")
+            logger.info(f"Connected to Ollama server at {url}")
+
+        if len(ollama_urls) <= 1:
+            # Single-process mode
+            pbar = tqdm(entries, desc="Evaluating (Ollama)", unit="sample")
+            for entry in pbar:
+                pair = load_image_pair(entry, short_side=args.resize_short_side)
+                if pair is None:
+                    results.append(_make_result(entry, None, "Failed to load images", True))
                 else:
-                    results.append({
-                        "filename": entry["stem"],
-                        "input_file": Path(entry["reference"]).name,
-                        "output_file": Path(entry["output"]).name,
-                        "match": resp["match"],
-                        "reason": resp["reason"],
-                        "error": False,
-                    })
-            pbar.set_postfix(
-                done=len(results),
-                matched=sum(1 for r in results if r.get("match") is True),
-            )
+                    resp = _evaluate_single_ollama_simple(
+                        ollama_urls[0], args.model, pair,
+                    )
+                    if resp is None:
+                        results.append(_make_result(entry, None, "Ollama evaluation failed", True))
+                    else:
+                        results.append(_make_result(entry, resp["match"], resp["reason"], False))
+                pbar.set_postfix(
+                    done=len(results),
+                    matched=sum(1 for r in results if r.get("match") is True),
+                )
+        else:
+            # Multi-process mode: one process per Ollama URL
+            num_workers = len(ollama_urls)
+            logger.info(f"Launching {num_workers} parallel workers")
+
+            # Split entries into chunks with original indices
+            chunks = [[] for _ in range(num_workers)]
+            for i, entry in enumerate(entries):
+                chunks[i % num_workers].append((i, entry))
+
+            ctx = mp.get_context("fork")
+            result_queue = ctx.Queue()
+
+            processes = []
+            for worker_id in range(num_workers):
+                p = ctx.Process(
+                    target=_ollama_worker,
+                    args=(worker_id, ollama_urls[worker_id], args.model,
+                          chunks[worker_id], args.resize_short_side, result_queue),
+                )
+                p.start()
+                processes.append(p)
+
+            # Collect results with progress bar
+            total = len(entries)
+            indexed_results = []
+            with tqdm(total=total, desc=f"Evaluating (Ollama x{num_workers})", unit="sample") as pbar:
+                while len(indexed_results) < total:
+                    idx, result = result_queue.get()
+                    indexed_results.append((idx, result))
+                    pbar.update(1)
+                    pbar.set_postfix(
+                        done=len(indexed_results),
+                        matched=sum(1 for _, r in indexed_results if r.get("match") is True),
+                    )
+
+            for p in processes:
+                p.join()
+
+            # Sort by original index to maintain order
+            indexed_results.sort(key=lambda x: x[0])
+            results = [r for _, r in indexed_results]
 
     return results
 
@@ -719,7 +765,9 @@ def _generate_simple_html(results, metadata, image_dirs, output_path):
   .badge-match {{ background: #d4edda; color: #155724; }}
   .badge-unmatch {{ background: #f8d7da; color: #721c24; }}
   .badge-error {{ background: #fff3cd; color: #856404; }}
-  .image-row {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }}
+  .image-row {{ display: grid; gap: 12px; margin-bottom: 12px; }}
+  .image-row.cols-2 {{ grid-template-columns: repeat(2, 1fr); }}
+  .image-row.cols-3 {{ grid-template-columns: repeat(3, 1fr); }}
   .image-col {{ text-align: center; }}
   .image-col img {{ width: 100%; border-radius: 8px; border: 1px solid #eee; min-height: 150px; background: #f0f0f0; }}
   .image-col .label {{ font-size: 12px; color: #666; margin-top: 4px; font-weight: 600; }}
@@ -824,8 +872,15 @@ function renderCard(item) {{
 
   let imagesHtml = '';
   if (IMAGE_DIRS.input && IMAGE_DIRS.output) {{
-    imagesHtml = `<div class="image-row">
+    const hasReference = IMAGE_DIRS.reference && item.reference_file;
+    const colsClass = hasReference ? 'cols-3' : 'cols-2';
+    let referenceCol = '';
+    if (hasReference) {{
+      referenceCol = `<div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.reference, item.reference_file)}}" alt="Reference"><div class="label">REFERENCE</div></div>`;
+    }}
+    imagesHtml = `<div class="image-row ${{colsClass}}">
       <div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.input, item.input_file)}}" alt="Input"><div class="label">INPUT</div></div>
+      ${{referenceCol}}
       <div class="image-col"><img src="${{buildImagePath(IMAGE_DIRS.output, item.output_file)}}" alt="Output"><div class="label">OUTPUT</div></div>
     </div>`;
   }}
@@ -912,9 +967,13 @@ def main():
         sys.path.insert(0, str(pkg_dir.parent))
 
     input_dir = Path(args.input_dir)
+    reference_dir = Path(args.reference_dir) if args.reference_dir else None
     output_dir = Path(args.output_dir)
 
-    for name, d in [("input", input_dir), ("output", output_dir)]:
+    dirs_to_check = [("input", input_dir), ("output", output_dir)]
+    if reference_dir:
+        dirs_to_check.append(("reference", reference_dir))
+    for name, d in dirs_to_check:
         if not d.is_dir():
             logger.error(f"{name} directory not found: {d}")
             sys.exit(1)
@@ -922,6 +981,16 @@ def main():
     # Step 1: Scan dataset
     logger.info("Step 1: Scanning dataset...")
     matched, mismatched = scan_dataset_pair(input_dir, output_dir)
+
+    # reference_dir이 있으면 matched 엔트리에 reference 이미지 경로 추가
+    if reference_dir:
+        ref_stems = {}
+        for p in reference_dir.iterdir():
+            if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS:
+                ref_stems[p.stem] = p
+        for entry in matched:
+            if entry["stem"] in ref_stems:
+                entry["reference"] = ref_stems[entry["stem"]]
 
     if not matched:
         logger.error("No matched image pairs found.")
@@ -947,7 +1016,11 @@ def main():
     if args.backend == "vllm":
         logger.info(f"Model: {args.model}, Backend: vLLM ({args.vllm_url})")
     elif args.backend == "ollama":
-        logger.info(f"Model: {args.model}, Backend: Ollama ({args.ollama_url})")
+        if args.ollama_urls:
+            urls = [u.strip() for u in args.ollama_urls.split(",") if u.strip()]
+            logger.info(f"Model: {args.model}, Backend: Ollama x{len(urls)} ({', '.join(urls)})")
+        else:
+            logger.info(f"Model: {args.model}, Backend: Ollama ({args.ollama_url})")
     else:
         logger.info(f"Model: {args.model}, Quantization: {args.quantization}")
 
@@ -976,16 +1049,23 @@ def main():
         "input": str(input_dir.resolve()),
         "output": str(output_dir.resolve()),
     }
+    if reference_dir:
+        image_dirs["reference"] = str(reference_dir.resolve())
 
     if args.copy_images:
         logger.info("Copying images to report directory...")
         report_images_dir = Path(args.report_dir) / "images"
-        for role in ["input", "output"]:
+        copy_roles = ["input", "output"]
+        if reference_dir:
+            copy_roles.insert(1, "reference")
+        for role in copy_roles:
             dest_dir = report_images_dir / role
             dest_dir.mkdir(parents=True, exist_ok=True)
         copied = 0
         for entry in valid_entries:
-            for role in ["input", "output"]:
+            for role in copy_roles:
+                if role not in entry:
+                    continue
                 src = Path(entry[role])
                 dest = report_images_dir / role / src.name
                 if not dest.exists():
@@ -1000,6 +1080,8 @@ def main():
             "output": "images/output",
             "_relative": True,
         }
+        if reference_dir:
+            image_dirs["reference"] = "images/reference"
 
     report_paths = generate_simple_reports(
         results, metadata, entries_map,
@@ -1026,8 +1108,24 @@ def main():
     if meta.get("errors", 0) > 0:
         logger.info(f"  Errors:    {meta['errors']}")
     logger.info(f"  Reports:   {Path(args.report_dir).resolve()}")
+
+    if args.compress:
+        report_dir_path = Path(args.report_dir).resolve()
+        parent_dir = report_dir_path.parent
+        base_name = report_dir_path.name
+        archive_base = parent_dir / base_name
+        logger.info(f"Compressing {report_dir_path} -> {archive_base}.zip")
+        shutil.make_archive(
+            base_name=str(archive_base),
+            format="zip",
+            root_dir=str(parent_dir),
+            base_dir=base_name,
+        )
+        logger.info(f"  Archive:    {archive_base}.zip")
+
     logger.info("=" * 60)
 
 
 if __name__ == "__main__":
     main()
+

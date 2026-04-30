@@ -37,9 +37,18 @@ Above you see two images: [REFERENCE] and [OUTPUT].
 
 The two images may have different camera angles, lighting, or show different people. Ignore these differences.
 
-TASK: Score the OUTPUT image on a 1-10 scale based on TWO criteria:
+TASK: Score the OUTPUT image on a 0-10 scale based on TWO criteria:
 (A) How well OUTPUT's hairstyle matches REFERENCE's hairstyle.
 (B) How natural and high-quality the hair looks in the OUTPUT image.
+
+=== AUTOMATIC ZERO (0) SCORE — CHECK THESE FIRST ===
+Before evaluating hairstyle similarity or quality, check the OUTPUT image for these disqualifying conditions.
+If ANY of the following is true, the score MUST be 0 immediately:
+- No person is visible in the OUTPUT image (e.g. only background, objects, scenery, or animals)
+- The person in the OUTPUT image is showing a complete back view — their face is entirely invisible (no profile, no partial face, no side view at all; only the back of the head/body is visible)
+- Multiple people are clearly and prominently visible as main subjects in the OUTPUT image (two or more people of similar size/prominence who all look like main subjects). NOTE: small/distant/blurry background people who do not draw attention are acceptable and should NOT trigger a 0 score.
+
+If any of the above conditions apply, respond with {"score": 0, "reason": "<explain which condition was triggered>"} and do NOT proceed further.
 
 === (A) HAIRSTYLE SIMILARITY — Compare ALL of the following: ===
 - Overall hairstyle shape and silhouette
@@ -77,6 +86,7 @@ Apply this cap STRICTLY. Even a near-perfect hairstyle shape match CANNOT score 
 IMPORTANT: Both criteria matter equally. A perfect hairstyle match with unnatural or artifact-ridden hair should score low. Natural-looking hair with a wrong hairstyle should also score low.
 
 SCORING GUIDE (be honest, not generous):
+- 0: AUTOMATIC ZERO — no person visible, complete back view with face entirely invisible, or multiple equally prominent people (see AUTOMATIC ZERO rules above)
 - 1-2: Completely wrong hairstyle AND/OR extremely unnatural hair (obvious artifacts, strong plastic/cartoon look)
 - 3-4: Major hairstyle differences OR significantly unnatural hair quality (clearly glossy/plastic/cartoonish)
 - 5: Partially similar hairstyle but with multiple obvious differences, OR noticeable unnatural gloss/plastic/cartoon quality
@@ -87,7 +97,7 @@ SCORING GUIDE (be honest, not generous):
 - 10: Perfect match in every aspect with flawless natural quality (extremely rare)
 
 Respond with ONLY a JSON object, no other text:
-{"score": <1-10>, "reason": "<1-2 sentences explaining your score, mentioning both similarity and naturalness>"}"""
+{"score": <0-10>, "reason": "<1-2 sentences explaining your score, mentioning both similarity and naturalness>"}"""
 
 
 def setup_logging(level: str):
@@ -308,7 +318,7 @@ def _parse_json_response(text: str) -> Optional[dict]:
 
 
 def _validate_scoring_response(data: dict) -> Optional[dict]:
-    """Validate score response: score must be int 1-10."""
+    """Validate score response: score must be int 0-10."""
     if not isinstance(data, dict):
         return None
     score_val = data.get("score")
@@ -321,7 +331,7 @@ def _validate_scoring_response(data: dict) -> Optional[dict]:
             score = int(float(score_val))
         except (ValueError, TypeError):
             return None
-    if not (1 <= score <= 10):
+    if not (0 <= score <= 10):
         return None
     return {"score": score, "reason": str(data.get("reason", ""))}
 
@@ -724,7 +734,7 @@ def generate_scoring_reports(results, metadata, entries_map, report_dir,
     median_score = sorted(valid_scores)[len(valid_scores) // 2] if valid_scores else 0
 
     # Score distribution (1-10)
-    distribution = {i: 0 for i in range(1, 11)}
+    distribution = {i: 0 for i in range(0, 11)}
     for s in valid_scores:
         distribution[s] += 1
 
@@ -777,8 +787,8 @@ def _generate_scoring_html(results, metadata, image_dirs, output_path):
     results_json = json.dumps(results, ensure_ascii=False)
     image_dirs_json = json.dumps(image_dirs or {}, ensure_ascii=False)
     dist = metadata.get("distribution", {})
-    dist_labels = json.dumps([str(i) for i in range(1, 11)])
-    dist_values = json.dumps([dist.get(i, 0) for i in range(1, 11)])
+    dist_labels = json.dumps([str(i) for i in range(0, 11)])
+    dist_values = json.dumps([dist.get(i, 0) for i in range(0, 11)])
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
